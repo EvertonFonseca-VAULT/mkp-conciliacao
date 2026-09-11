@@ -362,7 +362,10 @@ if __name__ == "__main__":
         if not novos:
             print(f"Nenhuma base nova em '{PASTA_NOVOS}/'. Coloque os exports do Magalu lá.")
         for caminho in novos:
-            importar_base_periodica_magalu(conn, caminho)
+            try:
+                importar_base_periodica_magalu(conn, caminho)
+            except Exception as e:
+                print(f"  erro importando {caminho}: {e}")
     finally:
         conn.close()
     print(f"\nPronto. Banco '{DATABASE}' atualizado em {SERVER}.")
