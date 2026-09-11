@@ -1,0 +1,4 @@
+mssql-python
+azure-identity
+pandas
+openpyxl

@@ -1,0 +1,14 @@
+# Dados brutos e planilhas — nunca versionados (dados reais de repasse/pedido)
+Dados/
+Projeto Imports/
+*.xlsx
+*.xls
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor
+.vscode/
