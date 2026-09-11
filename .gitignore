@@ -10,5 +10,8 @@ __pycache__/
 *.pyc
 .venv/
 
+# graphify output (gerado)
+graphify-out/
+
 # Editor
 .vscode/
