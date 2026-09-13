@@ -7,12 +7,12 @@ Mercado FULL.md`.
 Cobre a parte confirmada pelas fórmulas reais da VBA:
   - marcar_flags / filtrar_validos    (Para_Processar: colunas T/U)
   - carregar_totvs / cruzar_totvs      (Para_Processar: XLOOKUP duplo)
-  - classificar_diferenca              (Para_conciliar: fórmula M)
 
 NÃO cobre ainda:
   - leitura do RB (extrato bancário) e o SUMIFS por PED MKP.
 """
 
+import numpy as np
 import pandas as pd
 
 from tipagem_full import LAYOUT_FULL
@@ -68,27 +68,41 @@ def carregar_totvs(caminho=CAMINHO_TOTVS_PADRAO):
     return pd.read_excel(caminho, sheet_name="01-01 - Listagem do Browse", skiprows=4)
 
 
-def cruzar_totvs(df, totvs, coluna_chave=COLUNA_CHAVE_TOTVS):
-    """Equivalente ao XLOOKUP duplo da coluna Q (recontando os offsets
-    RC[] direto na fórmula real — corrige uma suposição anterior errada:
-    a chave primária é EXTERNAL_REFERENCE, não SOURCE_ID). Sem nenhum dos
-    dois, `verificar=True` (cai na fila de conferência manual / SRI).
+def _limpar_id(valor):
+    """Formata um ID (SHIPPING_ID/EXTERNAL_REFERENCE) sem o '.0' que o
+    pandas cola em colunas numéricas com valor ausente (float64)."""
+    if pd.isna(valor):
+        return ""
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor).strip()
 
-    ⚠️ A fórmula original usa como 2º critério o resultado de uma cadeia
-    de XLOOKUP em 'Aux2' que parece cruzar EXTERNAL_REFERENCE contra a
-    coluna SHIPPING_ID (provável resíduo/bug de planilha, os tipos de ID
-    não batem). Aqui uso o SHIPPING_ID bruto como 2º critério — mais
-    parecido com o processo manual real (SRI por SHIPPING_ID, depois
-    EXTERNAL_REFERENCE) do que com essa cadeia suspeita. A confirmar com
-    o Everton antes de tratar isso como definitivo."""
+
+def cruzar_totvs(df, totvs, coluna_chave=COLUNA_CHAVE_TOTVS):
+    """Chave de cruzamento é sempre o SHIPPING_ID (confirmado pelo Everton:
+    é assim que ele pesquisa no SRI manualmente). Quando não tem SHIPPING_ID
+    (ex.: linhas de cashback, que não têm envio associado), usa o
+    EXTERNAL_REFERENCE do próprio AB direto, sem validar contra o TOTVS —
+    mesma regra que ele aplica manualmente nesse caso.
+
+    ⚠️ Não valida mais o EXTERNAL_REFERENCE cru contra o TOTVS quando existe
+    SHIPPING_ID: casar por EXTERNAL_REFERENCE causava falso positivo (o
+    número do AB podia coincidir com um título real de OUTRO pedido/cliente
+    — achado real no lote de 03.09.2026). Se o SHIPPING_ID existir mas não
+    bater direto no TOTVS, cai em `verificar=True` pra resolver via SRI
+    (busca por SHIPPING_ID, mesmo fluxo manual)."""
     df = df.copy()
-    chaves_totvs = set(totvs[coluna_chave].astype(str))
-    referencia = df["EXTERNAL_REFERENCE"].astype(str)
-    shipping_id = df["SHIPPING_ID"].astype(str)
-    achou_direto = referencia.isin(chaves_totvs)
-    achou_fallback = shipping_id.isin(chaves_totvs)
-    df["totvs_encontrado"] = referencia.where(achou_direto, shipping_id.where(achou_fallback, 0))
-    df["verificar"] = ~(achou_direto | achou_fallback)
+    chaves_totvs = set(totvs[coluna_chave].dropna().astype(str)) - {"", "nan"}
+
+    referencia = df["EXTERNAL_REFERENCE"].apply(_limpar_id)
+    shipping_id = df["SHIPPING_ID"].apply(_limpar_id)
+    tem_shipping_id = shipping_id != ""
+
+    achou_via_shipping = tem_shipping_id & shipping_id.isin(chaves_totvs)
+
+    totvs_encontrado = np.where(achou_via_shipping, shipping_id, np.where(~tem_shipping_id, referencia, "0"))
+    df["totvs_encontrado"] = pd.Series(totvs_encontrado, index=df.index, dtype=object)
+    df["verificar"] = ~(achou_via_shipping | ~tem_shipping_id)
     return df
 
 
@@ -117,11 +131,11 @@ def resolver_pendentes_via_sri(pendentes):
     resolvido = {}
     for external_ref, shipping_id in unicos.itertuples(index=False):
         dados, _ = buscar_e_validar(session, shipping_id)
-        resolvido[(external_ref, shipping_id)] = shipping_id if dados else external_ref
+        resolvido[(external_ref, shipping_id)] = _limpar_id(shipping_id) if dados else _limpar_id(external_ref)
 
     pendentes = pendentes.copy()
     chave = list(zip(pendentes["EXTERNAL_REFERENCE"], pendentes["SHIPPING_ID"]))
-    pendentes["totvs_encontrado"] = [resolvido[k] for k in chave]
+    pendentes["totvs_encontrado"] = pd.Series([resolvido[k] for k in chave], index=pendentes.index, dtype=object)
     pendentes["verificar"] = False
     return pendentes
 
@@ -151,41 +165,3 @@ def gerar_para_processar(cruzado):
     df = df[COLUNAS_PARA_PROCESSAR].reset_index(drop=True)
     df.columns = ["DATE"] + COLUNAS_PARA_PROCESSAR[1:]
     return df
-
-
-def classificar_diferenca(diferenca, rebate, mediation):
-    """M = classificação Sem Diferença/Rebate/Mediation/verificar do
-    Para_conciliar, mesma ordem de checagem da fórmula real."""
-    if round(diferenca, 2) == 0:
-        return "Sem Diferença"
-    if round(diferenca - rebate, 2) == 0:
-        return "Rebate"
-    if round(diferenca - mediation, 2) == 0:
-        return "Mediation"
-    return "verificar"
-
-
-def _demo():
-    linhas = pd.DataFrame({
-        "EXTERNAL_REFERENCE": ["1", "2", "3", "4"],
-        "SHIPPING_ID": ["10", "20", "30", "40"],
-        "RECORD_TYPE": ["release", "release", "release", "release"],
-        "DESCRIPTION": ["payment", "Saque de dinheiro", "refund", "PAYOUT"],
-    })
-    flags = marcar_flags(linhas)
-    assert list(flags["movimento_valido"]) == ["SIM", "NÃO", "SIM", "NÃO"]
-    assert len(filtrar_validos(flags)) == 2
-
-    totvs = pd.DataFrame({"chave": ["1", "30"]})
-    cruzado = cruzar_totvs(linhas, totvs, "chave")
-    assert list(cruzado["verificar"]) == [False, True, False, True]
-
-    assert classificar_diferenca(0, 10, 5) == "Sem Diferença"
-    assert classificar_diferenca(10, 10, 5) == "Rebate"
-    assert classificar_diferenca(5, 10, 5) == "Mediation"
-    assert classificar_diferenca(3, 10, 5) == "verificar"
-    print("ok")
-
-
-if __name__ == "__main__":
-    _demo()

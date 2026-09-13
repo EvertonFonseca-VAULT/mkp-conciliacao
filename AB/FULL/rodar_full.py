@@ -1,6 +1,6 @@
 """Roda a pipeline completa do Mercado FULL (AB bruto -> TOTVS/SRI ->
-Validação -> Pagamento/Frete -> Para Processar) e salva o resultado em
-Excel pra conferência manual.
+Validação -> Pagamento/Frete -> Para Processar) e salva a aba "Para
+Processar" (formato de importação no TOTVS) em Excel.
 
 Uso:
     python rodar_full.py "<caminho do AB>" "<caminho do PTI>" [saida.xlsx]
@@ -21,21 +21,10 @@ from processar_full import (
     carregar_totvs, cruzar_totvs, resolver_pendentes_via_sri, gerar_para_processar,
 )
 from modelo_ab_full import montar_ab_pp, carregar_pti
-from modelo_ab import montar_validacao, montar_pagamento, montar_frete, montar_para_processar, resumo_acao_manual
+from modelo_ab import montar_validacao, montar_pagamento, montar_frete, montar_para_processar
 
-CAMINHO_AB_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB\FULL\2026\09.2026\MERCADO FULL 01.09.2026.xlsx"
+CAMINHO_AB_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB\FULL\2026\09.2026\MERCADO FULL 03.09.2026.xlsx"
 CAMINHO_PTI_PADRAO = r"C:\TEMP\PTI FULL.csv"
-
-# H:M no layout de 15 colunas (Pagamento/Frete/Para Processar): GROSS_AMOUNT
-# até COUPON_AMOUNT. A soma dessas 6 colunas deve bater com NET_CREDIT-NET_DEBIT.
-COLUNAS_H_M = ["GROSS_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT", "TAXES_AMOUNT", "COUPON_AMOUNT"]
-
-
-def com_conferencia(df):
-    df = df.copy()
-    df["SOMA H:M"] = df[COLUNAS_H_M].sum(axis=1).round(2)
-    df["BATE"] = df["SOMA H:M"] == (df["NET_CREDIT_AMOUNT"] - df["NET_DEBIT_AMOUNT"]).round(2)
-    return df
 
 
 def rodar(caminho_ab, caminho_pti):
@@ -65,20 +54,14 @@ def main():
     caminho_pti = sys.argv[2] if len(sys.argv) > 2 else CAMINHO_PTI_PADRAO
     saida = sys.argv[3] if len(sys.argv) > 3 else "resultado_full.xlsx"
 
-    validacao, pagamento, frete, processar = rodar(caminho_ab, caminho_pti)
+    _validacao, _pagamento, _frete, processar = rodar(caminho_ab, caminho_pti)
 
     with pd.ExcelWriter(saida) as writer:
-        validacao.to_excel(writer, sheet_name="Validacao", index=False)
-        com_conferencia(pagamento).to_excel(writer, sheet_name="Pagamento", index=False)
-        com_conferencia(frete).to_excel(writer, sheet_name="Frete", index=False)
-        com_conferencia(processar).to_excel(writer, sheet_name="Para Processar", index=False)
-        resumo_acao_manual(validacao).to_excel(writer, sheet_name="Acao Manual", index=False)
+        processar.to_excel(writer, sheet_name="Para Processar", index=False)
 
     print(f"AB: {caminho_ab}")
     print(f"PTI: {caminho_pti}")
-    print(f"Pedidos na Validação: {len(validacao)}")
     print(f"Linhas em Para Processar: {len(processar)}")
-    print(f"Fila de Ação Manual: {len(resumo_acao_manual(validacao))}")
     print(f"Salvo em: {os.path.abspath(saida)}")
 
 

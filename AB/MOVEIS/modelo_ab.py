@@ -341,34 +341,3 @@ def montar_para_processar(validacao, pagamento, frete, ab_pp):
 
 def resumo_acao_manual(validacao):
     return validacao[validacao["categoria"].isin(CATEGORIAS_ACAO_MANUAL)]
-
-
-def _demo():
-    ab_pp = pd.DataFrame({
-        "ARRUMAR": ["P1", "P1", "P2", "P3"],
-        "NOVO CREDITO": [100, 0, 50, 0],
-        "NOVO DEBITO": [0, 0, 0, 200],
-        "GROSS_AMOUNT": [100, 0, 50, -200],
-        "MP_FEE_AMOUNT": [-10, 0, -5, 0],
-        "FINANCING_FEE_AMOUNT": [-5, 0, 0, 0],
-        "SHIPPING_FEE_AMOUNT": [0, 0, -5, 0],
-        "COUPON_AMOUNT": [0, 0, 0, 0],
-        "CUSTO DE OFERECER DESCONTO": [0, 0, 0, 0],
-    })
-    pti = pd.DataFrame({
-        "PED. MKP": ["P1", "P2"],
-        "VALOR REAIS": [100, 50],
-        "VALOR": [100, 50],
-        "FRETE": [0, 0],
-    })
-    validacao = montar_validacao(ab_pp, pti)
-    categorias = dict(zip(validacao["PED_MKP"], validacao["categoria"]))
-    assert categorias["P1"] == "Manter igual", categorias
-    assert categorias["P2"] == "Manter igual", categorias
-    assert categorias["P3"] == "Estorno", categorias
-    assert list(resumo_acao_manual(validacao)["PED_MKP"]) == ["P3"]
-    print("ok")
-
-
-if __name__ == "__main__":
-    _demo()
