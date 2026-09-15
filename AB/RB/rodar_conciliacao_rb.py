@@ -77,14 +77,19 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     # AB (Para Processar) importado junto -- so pra nao precisar abrir o
     # arquivo original a parte enquanto o time se acostuma com essa planilha.
     # Remover quando nao for mais necessario.
-    with pd.ExcelWriter(caminho_xlsx) as writer:
-        resultado.to_excel(writer, sheet_name="Conciliacao", index=False)
-        fila_verificar.to_excel(writer, sheet_name="Fila VERIFICAR", index=False)
-        rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
-        para_processar.to_excel(writer, sheet_name="AB", index=False)
+    try:
+        with pd.ExcelWriter(caminho_xlsx) as writer:
+            resultado.to_excel(writer, sheet_name="Conciliacao", index=False)
+            fila_verificar.to_excel(writer, sheet_name="Fila VERIFICAR", index=False)
+            rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
+            para_processar.to_excel(writer, sheet_name="AB", index=False)
 
-    with pd.ExcelWriter(caminho_rebate_xlsx) as writer:
-        rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
+        with pd.ExcelWriter(caminho_rebate_xlsx) as writer:
+            rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Feche o arquivo no Excel antes de rodar de novo: {exc.filename}"
+        ) from exc
 
     return {
         "resultado": resultado,

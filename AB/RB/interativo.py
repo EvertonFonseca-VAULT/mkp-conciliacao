@@ -159,7 +159,7 @@ def main():
         # re-execucao interna (com o Python certo pro scraper) -- sem perguntas
         try:
             executar(args.canal.upper(), args.data, args.saida_pasta, args.scraper)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, FileNotFoundError, PermissionError) as exc:
             sys.exit(str(exc))
         return
 
@@ -178,7 +178,7 @@ def main():
                     print("Falhou ao rodar com o scraper -- veja o erro acima.")
             else:
                 executar(canal, data, args.saida_pasta, usar_scraper)
-        except (ValueError, FileNotFoundError) as exc:
+        except (ValueError, FileNotFoundError, PermissionError) as exc:
             print(f"\nErro: {exc}")
 
         if not perguntar_sim_nao("\nRodar outra conciliacao?", padrao_sim=False):
