@@ -228,9 +228,13 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
 
     botoes = []
     if caminho_bat_scraper:
+        # Sem link "download": o Chrome ignora esse atributo quando a
+        # propria pagina e file:// (seguranca do navegador) -- em vez de
+        # baixar, so navega pro .bat e mostra o texto dele na tela. Como o
+        # arquivo ja fica salvo do lado do dashboard, so avisa onde esta.
         botoes.append(
-            f'<a class="botao botao-primario" href="{html.escape(caminho_bat_scraper)}" download>'
-            f'Rodar scraper (baixa .bat)</a>'
+            f'<span class="botao botao-primario" style="cursor:default">'
+            f'Scraper pronto: {html.escape(caminho_bat_scraper)} (nessa mesma pasta -- da 2 cliques nele)</span>'
         )
     botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_completo)}">Baixar planilha completa</a>')
     if len(rebate_cmm):
