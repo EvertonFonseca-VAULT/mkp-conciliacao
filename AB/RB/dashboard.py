@@ -93,12 +93,21 @@ def _valor_ml(v):
     return html.escape(str(v))
 
 
-def _pedido_html(pedido):
-    """Pedido em badge com cor fixa -- nao herda o --ink do tema dark, que
-    fica branco-em-branco ao colar no Excel."""
-    texto = html.escape(str(pedido))
+def _valor_copiavel_html(texto):
+    """Badge com cor fixa -- nao herda o --ink do tema dark, que fica
+    texto claro em fundo branco (invisivel) ao colar no Excel."""
     estilo = "color:#111;background:#e8e8e8;padding:2px 6px;border-radius:4px"
     return f'<span style="{estilo}">{texto}</span>'
+
+
+def _pedido_html(pedido):
+    """Como _valor_copiavel_html, mais um apostrofo na frente -- forca
+    texto no Excel ao colar (mso-number-format sozinho nao e respeitado em
+    todo paste; sem isso, o numero de ate 16 digitos vira notacao
+    cientifica: 2,00002E+15). O Excel descarta o apostrofo sozinho ao
+    colar, so fica o numero."""
+    texto = html.escape(str(pedido))
+    return _valor_copiavel_html(f"'{texto}")
 
 
 def _linhas_tabela(fila_verificar):
@@ -109,7 +118,7 @@ def _linhas_tabela(fila_verificar):
             <tr data-pedido="{pedido}">
               <td class="chk-col"><input type="checkbox" class="chk-ajustado" data-pedido="{pedido}"></td>
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
-              <td class="num">{_moeda(row['DIF'])}</td>
+              <td class="num">{_valor_copiavel_html(_moeda(row['DIF']))}</td>
               <td class="num">{_valor_ml(row.get('ML_COMISSAO'))}</td>
               <td class="num">{_valor_ml(row.get('ML_ENVIO'))}</td>
               <td class="num">{_valor_ml(row.get('ML_TOTAL'))}</td>
