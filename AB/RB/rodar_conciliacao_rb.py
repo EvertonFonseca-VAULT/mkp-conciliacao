@@ -23,6 +23,7 @@ import sys
 import pandas as pd
 
 from agregador import agregar_por_pedido
+from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
 from cruzamento import cruzar_com_rb
 from enriquecer import enriquecer
@@ -37,25 +38,16 @@ def rodar(caminho_para_processar, caminho_rb):
     return cruzar_com_rb(agregado, rb, para_processar), rb, para_processar
 
 
-def main():
-    usar_scraper = "--scraper" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--scraper"]
-
-    canal = args[0].upper()
-    if canal not in CANAIS:
-        sys.exit(f"Canal '{canal}' desconhecido. Opcoes: {', '.join(CANAIS)}")
-    data = args[1]
-
+def processar(canal, data, pasta_saida=".", usar_scraper=False):
+    """Roda o ciclo inteiro (agregar/cruzar/enriquecer/rebate) e salva os
+    xlsx. Usado tanto pelo `main()` (CLI) quanto pelo interativo.py
+    (dashboard) -- unica funcao com a logica de ponta a ponta."""
     caminho_pp = resolver_para_processar(canal, data)
     caminho_rb = CAMINHO_RB_PADRAO
     raiz = CANAIS[canal]["raiz"]
-    saida = f"conciliacao_{canal.lower()}_{data.replace('.', '')}.xlsx"
 
     data_ref, responsavel = metadata_rb(caminho_rb)
-    try:
-        validar_data_rb(data, data_ref)
-    except ValueError as exc:
-        sys.exit(str(exc))
+    validar_data_rb(data, data_ref)
 
     resultado, rb, para_processar = rodar(caminho_pp, caminho_rb)
     verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
@@ -69,27 +61,70 @@ def main():
 
     resultado = enriquecer(resultado, raiz, ml_dados)
     fila_verificar = resultado[resultado["STATUS"] == "VERIFICAR"].sort_values(
-        "DIF", key=abs, ascending=False
+        "DIF", ascending=False
     )
     rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
+    alvo = buscar_alvo(canal, data_ref)
+
+    os.makedirs(pasta_saida, exist_ok=True)
+    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
+    caminho_xlsx = os.path.join(pasta_saida, f"conciliacao_{sufixo}.xlsx")
+    caminho_rebate_xlsx = os.path.join(pasta_saida, f"rebate_cmm_{sufixo}.xlsx")
 
     # AB (Para Processar) importado junto -- so pra nao precisar abrir o
     # arquivo original a parte enquanto o time se acostuma com essa planilha.
     # Remover quando nao for mais necessario.
-    with pd.ExcelWriter(saida) as writer:
+    with pd.ExcelWriter(caminho_xlsx) as writer:
         resultado.to_excel(writer, sheet_name="Conciliacao", index=False)
         fila_verificar.to_excel(writer, sheet_name="Fila VERIFICAR", index=False)
         rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
         para_processar.to_excel(writer, sheet_name="AB", index=False)
 
-    print(f"Para Processar: {caminho_pp}")
-    print(f"RB: {caminho_rb}")
+    with pd.ExcelWriter(caminho_rebate_xlsx) as writer:
+        rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
+
+    return {
+        "resultado": resultado,
+        "fila_verificar": fila_verificar,
+        "rebate_cmm": rebate_cmm,
+        "alvo": alvo,
+        "ml_atualizado": ml_dados is not None,
+        "rb": rb,
+        "para_processar": para_processar,
+        "data_ref": data_ref,
+        "responsavel": responsavel,
+        "raiz": raiz,
+        "caminho_pp": caminho_pp,
+        "caminho_rb": caminho_rb,
+        "caminho_xlsx": caminho_xlsx,
+        "caminho_rebate_xlsx": caminho_rebate_xlsx,
+    }
+
+
+def main():
+    usar_scraper = "--scraper" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--scraper"]
+
+    canal = args[0].upper()
+    if canal not in CANAIS:
+        sys.exit(f"Canal '{canal}' desconhecido. Opcoes: {', '.join(CANAIS)}")
+    data = args[1]
+
+    try:
+        r = processar(canal, data, usar_scraper=usar_scraper)
+    except ValueError as exc:
+        sys.exit(str(exc))
+
+    resultado, fila_verificar, rebate_cmm = r["resultado"], r["fila_verificar"], r["rebate_cmm"]
+
+    print(f"Para Processar: {r['caminho_pp']}")
+    print(f"RB: {r['caminho_rb']}")
     print(f"Total de pedidos: {len(resultado)}")
     for status, qtd in resultado["STATUS"].value_counts().items():
         print(f"  {status}: {qtd}")
     print(f"Fila VERIFICAR: {len(fila_verificar)}")
     print(f"Rebate CMM (linhas pra colar no Movimento_Bancario): {len(rebate_cmm)}")
-    print(f"Salvo em: {os.path.abspath(saida)}")
+    print(f"Salvo em: {os.path.abspath(r['caminho_xlsx'])}")
 
 
 if __name__ == "__main__":
