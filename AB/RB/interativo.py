@@ -109,33 +109,6 @@ def gerar_bat_scraper(canal, data, pasta_saida):
     return nome_bat
 
 
-def _garantir_atalho(pasta_saida):
-    """Cria/atualiza o atalho 'Rodar Conciliacao.lnk' na raiz da pasta de
-    saida, com o logo (logo.ico, do lado deste arquivo), apontando pro
-    .bat real -- roda de novo (idempotente) a cada execucao, entao todo
-    analista que rodar o programa ganha o atalho na propria pasta sem
-    precisar de setup manual. Nunca deve travar a conciliacao: qualquer
-    erro aqui e so um aviso."""
-    bat = os.path.abspath(os.path.join(os.path.dirname(__file__), "iniciar_conciliacao.bat"))
-    icone = os.path.abspath(os.path.join(os.path.dirname(__file__), "logo.ico"))
-    lnk = os.path.join(pasta_saida, "Rodar Conciliacao.lnk")
-    ps = (
-        "$s = New-Object -ComObject WScript.Shell; "
-        f"$a = $s.CreateShortcut('{lnk}'); "
-        f"$a.TargetPath = '{bat}'; "
-        f"$a.WorkingDirectory = '{os.path.dirname(bat)}'; "
-        f"$a.IconLocation = '{icone}'; "
-        "$a.Save()"
-    )
-    try:
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                            capture_output=True, timeout=10, text=True)
-        if r.returncode != 0:
-            print(f"Aviso: nao consegui criar o atalho ({r.stderr.strip()[:200]}).")
-    except Exception as exc:
-        print(f"Aviso: nao consegui criar o atalho ({exc}).")
-
-
 def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
@@ -156,7 +129,6 @@ def executar(canal, data, pasta_saida, usar_scraper):
         pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
         caminho_bat_scraper=caminho_bat_scraper,
     )
-    _garantir_atalho(pasta_saida)
 
     print(f"Total de pedidos: {len(r['resultado'])}")
     for status, qtd in r["resultado"]["STATUS"].value_counts().items():
