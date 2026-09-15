@@ -11,7 +11,7 @@ webbrowser.open = lambda caminho: chamadas.append(caminho)
 import interativo  # noqa: E402 (import depois do mock de webbrowser.open)
 
 PASTA = os.path.join(os.path.dirname(__file__), "_preview")
-CAMINHO_DASHBOARD = os.path.join(PASTA, "dashboard_0109.html")
+CAMINHO_DASHBOARD = os.path.join(PASTA, "Conciliacoes", "dashboard_0109.html")
 if os.path.exists(CAMINHO_DASHBOARD):
     os.remove(CAMINHO_DASHBOARD)
 
