@@ -13,7 +13,7 @@ CANAIS = {
         "prefixo": "PROCESSAR_MERCADO MOVEIS",
     },
     "FULL": {
-        "raiz": "MKP_ME_FULL",
+        "raiz": "MKP_MELI_FU",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\FULL",
         "prefixo": "PROCESSAR_MERCADO FULL",
     },
@@ -28,6 +28,12 @@ CANAIS = {
         "prefixo": "MERCADO ELETRODOMESTICO",
     },
 }
+
+# ES: raiz no canais.py (MKP_MELI_CO) diverge da tabela HISTORICOS do
+# CONTROLE_V2.xlsx (MKP_MELI_CO_ES) -- ainda nao confirmado qual esta certo
+# (15/09/2026, pedido do Everton). Ate confirmar, o painel "Historico TOTVS"
+# do dashboard nao mostra nada pra ES -- ver interativo.py/executar().
+CANAIS_SEM_RAIZ_CONFIRMADA = {"ES"}
 
 
 def validar_data_rb(data_pedida, data_ref_rb):

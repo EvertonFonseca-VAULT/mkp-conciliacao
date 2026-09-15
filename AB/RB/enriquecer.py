@@ -28,7 +28,15 @@ def enriquecer(resultado, raiz, ml_dados=None):
     df["ML_COMISSAO"] = None
     df["ML_ENVIO"] = None
     df["ML_REBATE"] = None
+    df["ML_DESCONTO_BONUS"] = None
+    df["ML_COMISSAO_LIQUIDA"] = None
     df["ML_TOTAL"] = None
+    # texto (rotulo literal do Mercado + valor) pra tooltip no dashboard --
+    # ver scraper_ml.py._detalhe / dashboard.py._cel_detalhe.
+    df["ML_COMISSAO_DETALHE"] = None
+    df["ML_ENVIO_DETALHE"] = None
+    df["ML_REBATE_DETALHE"] = None
+    df["ML_DESCONTO_BONUS_DETALHE"] = None
     df["ACAO_SUGERIDA"] = ""
 
     for i, row in df.iterrows():
@@ -59,19 +67,35 @@ def enriquecer(resultado, raiz, ml_dados=None):
         comissao = dados.get("comissao")
         envio = dados.get("envio")
         rebate = dados.get("rebate")
+        desconto_bonus = dados.get("desconto_bonus")
         total = dados.get("total")
+
+        # Comissao "real" a baixar = tarifa - desconto/bonus (ambos em
+        # valor absoluto) -- desconto/bonus e um credito que o MP da sobre
+        # a propria tarifa, NAO e rebate (nao sai do repasse, nao vai pro
+        # CMM em lote) -- pedido real 47818962330: tarifa 79,68, desconto
+        # 11,95, comissao liquida 67,73. Ver scraper_ml.py.
+        comissao_abs = abs(comissao) if comissao is not None else 0.0
+        desconto_bonus_abs = abs(desconto_bonus) if desconto_bonus else 0.0
+        comissao_liquida = round(comissao_abs - desconto_bonus_abs, 2)
 
         df.at[i, "ML_COMISSAO"] = comissao
         df.at[i, "ML_ENVIO"] = envio
         df.at[i, "ML_REBATE"] = rebate
+        df.at[i, "ML_DESCONTO_BONUS"] = desconto_bonus
+        df.at[i, "ML_COMISSAO_LIQUIDA"] = comissao_liquida
         df.at[i, "ML_TOTAL"] = total
+        df.at[i, "ML_COMISSAO_DETALHE"] = dados.get("comissao_detalhe")
+        df.at[i, "ML_ENVIO_DETALHE"] = dados.get("envio_detalhe")
+        df.at[i, "ML_REBATE_DETALHE"] = dados.get("rebate_detalhe")
+        df.at[i, "ML_DESCONTO_BONUS_DETALHE"] = dados.get("desconto_bonus_detalhe")
 
         if total is None:
             df.at[i, "ACAO_SUGERIDA"] = "Achou o pedido mas nao consegui ler o Total -- conferir manualmente no ML/MP."
             continue
 
         hist_com, hist_rep = row["HIST_COMISSAO"], row["HIST_REPASSE"]
-        comissao_abs = abs(comissao) if comissao is not None else 0.0
+        nota_desconto = f" (comissao ja liquida do desconto/bonus de {desconto_bonus_abs:.2f})" if desconto_bonus_abs else ""
         banco = "/".join(BANCO_TRANSITORIA)
         repasse_ab = row["REPASSE"]
 
@@ -103,7 +127,7 @@ def enriquecer(resultado, raiz, ml_dados=None):
                 )
             else:
                 df.at[i, "ACAO_SUGERIDA"] = (
-                    f"Pedido nunca lancado -- baixar Comissao {comissao_abs:.2f} "
+                    f"Pedido nunca lancado -- baixar Comissao {comissao_liquida:.2f}{nota_desconto} "
                     f"({hist_com}, MERC PAGO, sem banco) e Repasse {repasse_a_baixar:.2f} "
                     f"({hist_rep}, NORMAL, banco {banco})."
                     + (f" Rebate de {rebate_abs:.2f} (ja EXCLUIDO do repasse acima) vai pro CMM (lote)." if rebate_abs else "")
@@ -111,10 +135,36 @@ def enriquecer(resultado, raiz, ml_dados=None):
         else:
             df.at[i, "ACAO_SUGERIDA"] = (
                 f"Ja tem lancamento no banco mas nao bate -- conferir Saldo do titulo no TOTVS. "
-                f"Valor correto segundo o ML/MP: Comissao {comissao_abs:.2f} ({hist_com}) e "
+                f"Valor correto segundo o ML/MP: Comissao {comissao_liquida:.2f}{nota_desconto} ({hist_com}) e "
                 f"Repasse {repasse_a_baixar:.2f} ({hist_rep}, banco {banco}). "
                 f"Cancelar o que estiver errado e relancar com esses valores."
                 + (f" Rebate de {rebate_abs:.2f} (ja EXCLUIDO do repasse acima) vai pro CMM (lote)." if rebate_abs else "")
             )
 
     return df
+
+
+if __name__ == "__main__":
+    import pandas as pd
+
+    # Pedido real 47818962330: Tarifa de venda total -79.68, dentro de
+    # "Estorno" um "- Descontos e bonus" de 11.95 -- comissao liquida
+    # esperada: 79.68 - 11.95 = 67.73, e NAO deve contar como rebate.
+    resultado = pd.DataFrame([{
+        "STATUS": "VERIFICAR", "PEDIDO_MKP": "47818962330",
+        "REPASSE": 374.27, "TOTAL_RB": 0.0, "DIF": 374.27,
+    }])
+    ml_dados = {"47818962330": {
+        "comissao": -79.68, "envio": -44.05, "rebate": None,
+        "desconto_bonus": 11.95, "total": 386.22,
+        "envio_detalhe": "Tarifa do Mercado Envios (por sua conta): -44,05",
+        "desconto_bonus_detalhe": "Descontos e bonus: 11,95",
+    }}
+    df = enriquecer(resultado, "MKP_MELI_FU", ml_dados)
+    linha = df.iloc[0]
+    assert linha["ML_DESCONTO_BONUS"] == 11.95, linha["ML_DESCONTO_BONUS"]
+    assert linha["ML_COMISSAO_LIQUIDA"] == 67.73, linha["ML_COMISSAO_LIQUIDA"]
+    assert "67.73" in linha["ACAO_SUGERIDA"], linha["ACAO_SUGERIDA"]
+    assert "desconto/bonus de 11.95" in linha["ACAO_SUGERIDA"], linha["ACAO_SUGERIDA"]
+    assert linha["ML_ENVIO_DETALHE"].startswith("Tarifa do Mercado Envios")
+    print("enriquecer.py: ok")

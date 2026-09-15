@@ -26,6 +26,7 @@ from agregador import agregar_por_pedido
 from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
 from cruzamento import cruzar_com_rb
+from descricoes_ml import gerar_descricoes_ml
 from enriquecer import enriquecer
 from parser_rb import carregar_rb, metadata_rb
 from rebate_cmm import gerar_rebate_cmm
@@ -74,6 +75,12 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     caminho_xlsx = os.path.join(pasta_conciliacoes, f"conciliacao_{sufixo}.xlsx")
     caminho_rebate_xlsx = os.path.join(pasta_cmm, f"rebate_cmm_{sufixo}.xlsx")
 
+    descricoes_ml = gerar_descricoes_ml(ml_dados)
+    caminho_descricoes_xlsx = (
+        os.path.join(pasta_conciliacoes, f"descricoes_ml_{sufixo}.xlsx")
+        if len(descricoes_ml) else None
+    )
+
     # AB (Para Processar) importado junto -- so pra nao precisar abrir o
     # arquivo original a parte enquanto o time se acostuma com essa planilha.
     # Remover quando nao for mais necessario.
@@ -86,6 +93,9 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
 
         with pd.ExcelWriter(caminho_rebate_xlsx) as writer:
             rebate_cmm.to_excel(writer, sheet_name="Rebate CMM", index=False)
+
+        if caminho_descricoes_xlsx:
+            descricoes_ml.to_excel(caminho_descricoes_xlsx, index=False)
     except PermissionError as exc:
         raise PermissionError(
             f"Feche o arquivo no Excel antes de rodar de novo: {exc.filename}"
@@ -106,6 +116,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "caminho_rb": caminho_rb,
         "caminho_xlsx": caminho_xlsx,
         "caminho_rebate_xlsx": caminho_rebate_xlsx,
+        "caminho_descricoes_xlsx": caminho_descricoes_xlsx,
     }
 
 

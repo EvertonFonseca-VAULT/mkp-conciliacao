@@ -17,7 +17,7 @@ import subprocess
 import sys
 import webbrowser
 
-from canais import CANAIS
+from canais import CANAIS, CANAIS_SEM_RAIZ_CONFIRMADA
 from dashboard import gerar_dashboard
 from rodar_conciliacao_rb import processar
 
@@ -91,13 +91,17 @@ def relancar_com_scraper(canal, data, pasta_saida):
     return subprocess.run(cmd).returncode
 
 
-def gerar_bat_scraper(canal, data, pasta_saida):
+def gerar_bat_scraper(canal, data, pasta_saida, pasta_destino):
     """.bat de 2 cliques que reroda essa mesma conciliacao com --scraper --
-    pro botao "Rodar scraper" do dashboard (pagina HTML nao pode disparar
-    processo local sozinha, entao o botao so baixa/abre esse .bat)."""
+    fica salvo em pasta_destino (Conciliacoes/, do lado do dashboard) mas
+    reinvoca com --saida-pasta=pasta_saida (a RAIZ, nao Conciliacoes/) --
+    executar()/processar() recalculam as subpastas Conciliacoes/CMM a
+    partir dela; passar a subpasta aqui geraria Conciliacoes/Conciliacoes
+    aninhado, escrevendo num lugar diferente do dashboard que o usuario
+    esta olhando."""
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     nome_bat = f"rodar_scraper_{sufixo}.bat"
-    caminho_bat = os.path.join(pasta_saida, nome_bat)
+    caminho_bat = os.path.join(pasta_destino, nome_bat)
     conteudo = (
         "@echo off\n"
         f'"{SCRAPER_PYTHON}" "{os.path.abspath(__file__)}" '
@@ -113,10 +117,11 @@ def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
     pasta_conciliacoes = os.path.join(pasta_saida, "Conciliacoes")
+    raiz_confirmada = r["raiz"] if canal not in CANAIS_SEM_RAIZ_CONFIRMADA else None
 
     caminho_bat_scraper = None
     if not usar_scraper and len(r["fila_verificar"]):
-        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_conciliacoes)
+        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida, pasta_conciliacoes)
 
     caminho_html_esperado = os.path.join(pasta_conciliacoes, f"dashboard_{data.replace('.', '')}.html")
     dashboard_ja_existia = os.path.exists(caminho_html_esperado)
@@ -127,7 +132,10 @@ def executar(canal, data, pasta_saida, usar_scraper):
         caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
         caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
         pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
-        caminho_bat_scraper=caminho_bat_scraper,
+        caminho_bat_scraper=caminho_bat_scraper, raiz=raiz_confirmada,
+        caminho_xlsx_descricoes=(
+            os.path.basename(r["caminho_descricoes_xlsx"]) if r["caminho_descricoes_xlsx"] else None
+        ),
     )
 
     print(f"Total de pedidos: {len(r['resultado'])}")

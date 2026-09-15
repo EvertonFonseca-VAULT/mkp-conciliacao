@@ -128,19 +128,50 @@ def _pedido_html(pedido):
     return _valor_copiavel_html(f"'{texto}")
 
 
+def _painel_historico(raiz):
+    """RAIZ + codigos _REPASSE/_COMISSAO/_FRETE do historico TOTVS pra
+    colar direto ao resolver um VERIFICAR. Sufixos seguem sempre o padrao
+    RAIZ + "_REPASSE" etc (confirmado nas 93 linhas da tabela HISTORICOS
+    do CONTROLE_V2.xlsx -- ver extrair_historicos.py/historicos_totvs.json)
+    -- deriva direto, nao depende dessa raiz estar na tabela (ex. ELETRO
+    usa uma raiz propria desse pipeline, fora do CONTROLE_V2)."""
+    linhas = [("RAIZ", raiz), ("Repasse", f"{raiz}_REPASSE"),
+              ("Comissao", f"{raiz}_COMISSAO"), ("Frete", f"{raiz}_FRETE")]
+    return "".join(
+        f'<div class="alvo-linha"><span>{label}</span>{_valor_copiavel_html(html.escape(valor))}</div>'
+        for label, valor in linhas
+    )
+
+
+def _cel_detalhe(valor_html, texto_detalhe):
+    """<td> com tooltip nativo (title) listando as sublinhas que compoem
+    esse total, com o mesmo rotulo que o Mercado usou -- pedido do Everton,
+    16/09/2026 ("regua de calculo" ao passar o mouse). Sem JS: o navegador
+    ja mostra o title no hover."""
+    if not texto_detalhe:
+        return f'<td class="num">{valor_html}</td>'
+    return f'<td class="num tem-detalhe" title="{html.escape(texto_detalhe)}">{valor_html}</td>'
+
+
 def _linhas_tabela(fila_verificar):
     saida = []
     for _, row in fila_verificar.iterrows():
         pedido = html.escape(str(row["PEDIDO_MKP"]))
+        cel_comissao = _cel_detalhe(
+            _valor_ml(row.get('ML_COMISSAO_LIQUIDA', row.get('ML_COMISSAO'))), row.get('ML_COMISSAO_DETALHE'))
+        cel_desconto = _cel_detalhe(_valor_ml(row.get('ML_DESCONTO_BONUS')), row.get('ML_DESCONTO_BONUS_DETALHE'))
+        cel_envio = _cel_detalhe(_valor_ml(row.get('ML_ENVIO')), row.get('ML_ENVIO_DETALHE'))
+        cel_rebate = _cel_detalhe(_valor_ml(row.get('ML_REBATE')), row.get('ML_REBATE_DETALHE'))
         saida.append(f"""
             <tr data-pedido="{pedido}">
               <td class="chk-col"><input type="checkbox" class="chk-ajustado" data-pedido="{pedido}"></td>
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
               <td class="num">{_valor_moeda_html(row['DIF'])}</td>
-              <td class="num">{_valor_ml(row.get('ML_COMISSAO'))}</td>
-              <td class="num">{_valor_ml(row.get('ML_ENVIO'))}</td>
+              {cel_comissao}
+              {cel_desconto}
+              {cel_envio}
               <td class="num">{_valor_ml(row.get('ML_TOTAL'))}</td>
-              <td class="num">{_valor_ml(row.get('ML_REBATE'))}</td>
+              {cel_rebate}
               <td class="acao">{html.escape(str(row.get('ACAO_SUGERIDA', '')))}</td>
             </tr>""")
     return "".join(saida)
@@ -179,7 +210,8 @@ def _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente):
 
 def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_ref_rb,
                      caminho_xlsx_completo, caminho_xlsx_rebate, pasta_saida, alvo=None,
-                     ml_atualizado=False, caminho_bat_scraper=None):
+                     ml_atualizado=False, caminho_bat_scraper=None, raiz=None,
+                     caminho_xlsx_descricoes=None):
     contagem = resultado["STATUS"].value_counts()
     total = len(resultado)
 
@@ -219,11 +251,12 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
         )
 
     alvo_html = _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente)
+    historico_html = _painel_historico(raiz) if raiz else ""
 
     barras_html = _linhas_barra(fila_verificar) if verificar_qtd else '<p class="ink-muted">Nenhum pedido em VERIFICAR.</p>'
     tabela_html = (
         _linhas_tabela(fila_verificar) if verificar_qtd
-        else '<tr><td colspan="8" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
+        else '<tr><td colspan="9" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
     )
 
     botoes = []
@@ -239,6 +272,8 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_completo)}">Baixar planilha completa</a>')
     if len(rebate_cmm):
         botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_rebate)}">Baixar XLSX Rebate CMM ({len(rebate_cmm)})</a>')
+    if caminho_xlsx_descricoes:
+        botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_descricoes)}">Baixar descricoes ML/MP</a>')
     botoes_html = "".join(botoes)
 
     titulo = f"Conciliacao {canal} - {data}"
@@ -323,6 +358,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   th, td {{ text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }}
   th {{ position: sticky; top: 0; background: var(--surface); color: var(--ink-secondary); font-weight: 500; }}
   td.num {{ font-variant-numeric: tabular-nums; }}
+  td.tem-detalhe {{ cursor: help; border-bottom: 1px dotted var(--ink-muted); }}
   td.acao {{ white-space: normal; min-width: 420px; color: var(--ink-secondary); }}
   td.chk-col, th.chk-col {{ width: 28px; text-align: center; padding: 7px 4px; }}
   .chk-ajustado {{ width: 15px; height: 15px; accent-color: {COR_OK}; cursor: pointer; }}
@@ -374,13 +410,14 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     </div>
 
     <div class="col">
+      {f'<div class="painel"><h2>Historico TOTVS ({html.escape(canal)})</h2>{historico_html}</div>' if historico_html else ""}
       <div class="painel tabela-verificar">
         <h2>Fila VERIFICAR</h2>
         <div class="tabela-scroll">
           <table>
             <thead><tr>
               <th class="chk-col"></th><th>Pedido</th><th>DIF</th>
-              <th>Comissao</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
+              <th>Comissao</th><th>Desc/Bonus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
               <th>Acao sugerida</th>
             </tr></thead>
             <tbody>{tabela_html}</tbody>
