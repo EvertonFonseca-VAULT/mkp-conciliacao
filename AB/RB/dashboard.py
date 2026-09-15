@@ -93,6 +93,16 @@ def _valor_ml(v):
     return html.escape(str(v))
 
 
+def _pedido_html(pedido):
+    """Pedido em badge com cor fixa (nao herda o --ink do tema dark, que
+    fica branco-em-branco ao colar no Excel) e mso-number-format:'\\@' pra
+    forcar texto no Excel -- sem isso o numero de 16 digitos vira notacao
+    cientifica (2,00002E+15) ao colar."""
+    texto = html.escape(str(pedido))
+    estilo = "color:#111;background:#e8e8e8;padding:2px 6px;border-radius:4px;mso-number-format:'\\@'"
+    return f'<span style="{estilo}">{texto}</span>'
+
+
 def _linhas_tabela(fila_verificar):
     saida = []
     for _, row in fila_verificar.iterrows():
@@ -100,7 +110,7 @@ def _linhas_tabela(fila_verificar):
         saida.append(f"""
             <tr data-pedido="{pedido}">
               <td class="chk-col"><input type="checkbox" class="chk-ajustado" data-pedido="{pedido}"></td>
-              <td>{pedido}</td>
+              <td>{_pedido_html(row['PEDIDO_MKP'])}</td>
               <td class="num">{_moeda(row['DIF'])}</td>
               <td class="num">{_valor_ml(row.get('ML_COMISSAO'))}</td>
               <td class="num">{_valor_ml(row.get('ML_ENVIO'))}</td>
