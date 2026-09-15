@@ -1,6 +1,15 @@
-"""Config por canal: RAIZ do historico TOTVS e onde fica o "Para Processar"
-do dia. O RB e sempre o mesmo arquivo (exportado do TOTVS pra todos os
-canais) -- por isso nao entra na config por canal."""
+"""Config por canal -- FONTE UNICA de tudo que varia por canal (raiz do
+historico TOTVS, onde fica o "Para Processar" do dia, chave de busca no RB
+transitorio/original, nome da loja no calendario de planejamento). Antes
+cada um desses vivia num dict separado (canais.py/conferir_rbx.py/
+calendario_alvo.py) e podia divergir sem ninguem notar -- foi assim que
+varias das inconsistencias de rotulo desta sessao passaram batido.
+Consolidado aqui em 16/09/2026, pedido do Everton (organizacional, nao
+mudou nenhum valor).
+
+O RB e sempre o mesmo arquivo (exportado do TOTVS pra todos os canais) --
+por isso nao entra na config por canal.
+"""
 
 import glob
 
@@ -11,21 +20,32 @@ CANAIS = {
         "raiz": "MKP_MELI_MO",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\MOVEIS",
         "prefixo": "PROCESSAR_MERCADO MOVEIS",
+        # chave_rbx: NAO confirmada -- o extrato real do dia 2 mostrou "WEB"
+        # (MKP REPASSE MELI WEB, REC MKP MERCADO WEB...), nao "MO". O
+        # Everton pediu pra manter "MO" ate testar com dado real do MOVEIS.
+        "chave_rbx": "MO",
+        "loja_calendario": "MOVEIS",
     },
     "FULL": {
         "raiz": "MKP_MELI_FU",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\FULL",
         "prefixo": "PROCESSAR_MERCADO FULL",
+        "chave_rbx": "FU",  # confirmada com dado real 2x (01/09 e 02/09)
+        "loja_calendario": "FULL",
     },
     "ES": {
         "raiz": "MKP_MELI_CO",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES",
         "prefixo": "PROCESSAR_MERCADO COLETAS ES",
+        "chave_rbx": "ES",  # pedido do Everton, ainda sem teste com dado real do ES
+        "loja_calendario": "COLETAS ES",
     },
     "ELETRO": {
         "raiz": "MKP_MELI_ED",
         "pasta": r"C:\RODAR TOTVS\ELETRODOMESTICO",
         "prefixo": "MERCADO ELETRODOMESTICO",
+        "chave_rbx": "ED",  # nunca testado com dado real do ELETRO
+        "loja_calendario": "ELETRO",
     },
 }
 

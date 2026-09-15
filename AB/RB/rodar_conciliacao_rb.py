@@ -25,6 +25,7 @@ import pandas as pd
 from agregador import agregar_por_pedido
 from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
+from conferir_rbx import conferir as conferir_rbx
 from cruzamento import cruzar_com_rb
 from descricoes_ml import gerar_descricoes_ml
 from enriquecer import enriquecer
@@ -53,12 +54,25 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     resultado, rb, para_processar = rodar(caminho_pp, caminho_rb)
     verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
 
+    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
+    caminho_descricoes_existente = os.path.join(pasta_saida, "Conciliacoes", f"descricoes_ml_{sufixo}.xlsx")
+
     ml_dados = None
+    ml_de_cache = False
     if usar_scraper and len(verificar):
         from scraper_ml import resumir_pedidos  # so importa playwright se pedido
 
         print(f"Buscando {len(verificar)} pedido(s) VERIFICAR no ML/MP...")
         ml_dados = resumir_pedidos(list(verificar["PEDIDO_MKP"]))
+    elif len(verificar):
+        # Reaproveita uma raspagem anterior (descricoes_ml_<sufixo>.xlsx)
+        # em vez de deixar a fila em branco -- so precisa rodar o scraper
+        # de novo pros pedidos que ainda nao foram consultados. Pedido do
+        # Everton, 16/09/2026.
+        from classificar_ml import carregar_descricoes_salvas  # nao usa playwright
+
+        ml_dados = carregar_descricoes_salvas(caminho_descricoes_existente)
+        ml_de_cache = ml_dados is not None
 
     resultado = enriquecer(resultado, raiz, ml_dados)
     fila_verificar = resultado[resultado["STATUS"] == "VERIFICAR"].sort_values(
@@ -66,12 +80,16 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     )
     rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
     alvo = buscar_alvo(canal, data_ref)
+    # Confere as 2 contas (original x transitoria) contra rb.xlsx/rbx.xlsx
+    # que o analista salva na mao em AUXILIAR/ -- None se ainda nao gerou
+    # os 2 arquivos (feature opcional, nao trava o dia a dia). Ver
+    # conferir_rbx.py.
+    conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"))
 
     pasta_conciliacoes = os.path.join(pasta_saida, "Conciliacoes")
     pasta_cmm = os.path.join(pasta_saida, "CMM")
     os.makedirs(pasta_conciliacoes, exist_ok=True)
     os.makedirs(pasta_cmm, exist_ok=True)
-    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     caminho_xlsx = os.path.join(pasta_conciliacoes, f"conciliacao_{sufixo}.xlsx")
     caminho_rebate_xlsx = os.path.join(pasta_cmm, f"rebate_cmm_{sufixo}.xlsx")
 
@@ -106,7 +124,8 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "fila_verificar": fila_verificar,
         "rebate_cmm": rebate_cmm,
         "alvo": alvo,
-        "ml_atualizado": ml_dados is not None,
+        "ml_atualizado": ml_dados is not None and not ml_de_cache,
+        "ml_de_cache": ml_de_cache,
         "rb": rb,
         "para_processar": para_processar,
         "data_ref": data_ref,
@@ -117,6 +136,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "caminho_xlsx": caminho_xlsx,
         "caminho_rebate_xlsx": caminho_rebate_xlsx,
         "caminho_descricoes_xlsx": caminho_descricoes_xlsx,
+        "conferencia_rbx": conferencia_rbx,
     }
 
 

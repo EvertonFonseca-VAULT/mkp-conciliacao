@@ -1,8 +1,9 @@
 """Busca o ALVO do dia (VALOR_EB) na planilha de calendario de planejamento
 de baixas -- X:\\...\\MKP\\CALENDARIO\\CALENDARIO_<ano>\\Calendario_Planejamento
 Baixas_<ano>.xlsx, aba "Visao_<MES>_<ano>". O calendario ja tem o valor
-esperado por LOJA/DATA lancado com antecedencia; o nome da LOJA bate direto
-com o canal (FULL/MOVEIS/ELETRO, ES vira "COLETAS ES").
+esperado por LOJA/DATA lancado com antecedencia; o nome da LOJA vem de
+CANAIS[canal]["loja_calendario"] em canais.py (fonte unica dessa config
+por canal).
 
 Usado pra validar que RB + REBATE + AJUSTE (fila VERIFICAR) fecha com o
 alvo do dia -- pedido do Everton, ver dashboard.py.
@@ -14,14 +15,9 @@ import unicodedata
 
 import openpyxl
 
-PASTA_CALENDARIO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CALENDÁRIO"
+from canais import CANAIS
 
-CANAL_PARA_LOJA = {
-    "FULL": "FULL",
-    "MOVEIS": "MOVEIS",
-    "ELETRO": "ELETRO",
-    "ES": "COLETAS ES",
-}
+PASTA_CALENDARIO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CALENDÁRIO"
 
 MESES = [
     "JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO",
@@ -57,7 +53,7 @@ def buscar_alvo(canal, data_ref):
     Retorna o VALOR_EB do calendario pro canal/dia, ou None se nao achar
     planilha, aba ou linha (mes ainda nao cadastrado, canal fora do
     calendario etc -- nao e erro, so significa "sem alvo pra comparar")."""
-    loja = CANAL_PARA_LOJA.get(canal)
+    loja = CANAIS.get(canal, {}).get("loja_calendario")
     if not loja or not data_ref:
         return None
 

@@ -22,23 +22,11 @@ toggle claro/escuro se o time pedir depois.
 import html
 import os
 
-STATUS_COR = {
-    "SEM DIFF": "#2fbf4f",
-    "REBATE": "#4a90e2",
-    "EST COM": "#2dd4b0",
-    "MEDIACAO": "#8a7cff",
-    "VERIFICAR": "#e0524f",
-}
-STATUS_ORDEM = list(STATUS_COR)
-
-COR_DIF_POS = "#4a90e2"
-COR_DIF_NEG = "#e0524f"
 COR_OK = "#2fbf4f"
 COR_ALERTA = "#e0524f"
 COR_FUNDO_NEG = "#f5a3a0"
 COR_FUNDO_POS = "#8fd99f"
 
-MAX_LINHAS_BARRA = 20
 TOLERANCIA_ALVO = 0.01
 
 
@@ -62,45 +50,6 @@ def _valor_moeda_html(valor):
         f'<span style="color:#111;background:{cor_fundo};padding:2px 6px;border-radius:4px">'
         f"{sinal}{numero}</span>"
     )
-
-
-def _donut_css(fatias):
-    stops, acumulado = [], 0.0
-    for cor, pct in fatias:
-        if pct <= 0:
-            continue
-        inicio, acumulado = acumulado, acumulado + pct
-        stops.append(f"{cor} {inicio:.2f}% {acumulado:.2f}%")
-    if not stops:
-        return "var(--gridline)"
-    return "conic-gradient(" + ", ".join(stops) + ")"
-
-
-def _linhas_barra(fila_verificar):
-    linhas = fila_verificar.head(MAX_LINHAS_BARRA)
-    max_abs = linhas["DIF"].abs().max() if len(linhas) else 0
-    saida = []
-    for _, row in linhas.iterrows():
-        dif = row["DIF"]
-        pct = (abs(dif) / max_abs * 100) if max_abs else 0
-        pedido = html.escape(str(row["PEDIDO_MKP"]))
-        if dif < 0:
-            saida.append(f"""
-            <div class="bar-row">
-              <div class="bar-label">{pedido}</div>
-              <div class="bar-neg-track"><span class="bar-value">{_moeda(dif)}</span><div class="bar neg" style="width:{pct:.1f}%"></div></div>
-              <div class="bar-center"></div>
-              <div class="bar-pos-track"></div>
-            </div>""")
-        else:
-            saida.append(f"""
-            <div class="bar-row">
-              <div class="bar-label">{pedido}</div>
-              <div class="bar-neg-track"></div>
-              <div class="bar-center"></div>
-              <div class="bar-pos-track"><div class="bar pos" style="width:{pct:.1f}%"></div><span class="bar-value">{_moeda(dif)}</span></div>
-            </div>""")
-    return "".join(saida)
 
 
 def _valor_ml(v):
@@ -153,24 +102,52 @@ def _cel_detalhe(valor_html, texto_detalhe):
     return f'<td class="num tem-detalhe" title="{html.escape(texto_detalhe)}">{valor_html}</td>'
 
 
+def _repasse_calculado(dif, comissao, custo_envio):
+    """Repasse = |DIF| + |Comissao| + |Custo de envio| -- soma dos
+    absolutos, nao o absoluto da soma: o Frete sempre vem negativo, entao
+    somar os valores com sinal nunca fecharia com a nota. Usa so o CUSTO
+    DE ENVIO (nao o grupo Envios inteiro) -- a Tarifa de cobranca, quando
+    existe, fica de fora daqui (continua contando na coluna Frete, que
+    mostra o grupo Envios inteiro). Pedido do Everton, 16/09/2026. None se
+    faltar algum dos 3 (pedido ainda sem dado do ML/MP)."""
+    if dif is None or comissao is None or custo_envio is None:
+        return None
+    return round(abs(dif) + abs(comissao) + abs(custo_envio), 2)
+
+
 def _linhas_tabela(fila_verificar):
     saida = []
     for _, row in fila_verificar.iterrows():
         pedido = html.escape(str(row["PEDIDO_MKP"]))
-        cel_comissao = _cel_detalhe(
-            _valor_ml(row.get('ML_COMISSAO_LIQUIDA', row.get('ML_COMISSAO'))), row.get('ML_COMISSAO_DETALHE'))
+        dif = row["DIF"]
+        comissao = row.get('ML_COMISSAO_LIQUIDA', row.get('ML_COMISSAO'))
+        frete = row.get('ML_ENVIO')
+        custo_envio = row.get('ML_CUSTO_ENVIO')
+        cel_comissao = _cel_detalhe(_valor_ml(comissao), row.get('ML_COMISSAO_DETALHE'))
         cel_desconto = _cel_detalhe(_valor_ml(row.get('ML_DESCONTO_BONUS')), row.get('ML_DESCONTO_BONUS_DETALHE'))
-        cel_envio = _cel_detalhe(_valor_ml(row.get('ML_ENVIO')), row.get('ML_ENVIO_DETALHE'))
+        cel_envio = _cel_detalhe(_valor_ml(frete), row.get('ML_ENVIO_DETALHE'))
         cel_rebate = _cel_detalhe(_valor_ml(row.get('ML_REBATE')), row.get('ML_REBATE_DETALHE'))
+
+        repasse = _repasse_calculado(dif, comissao, custo_envio)
+        detalhe_repasse = None
+        if repasse is not None:
+            detalhe_repasse = "\n".join([
+                f"DIF (banco, absoluto): {abs(dif):.2f}".replace(".", ","),
+                f"Comissao (absoluto): {abs(comissao):.2f}".replace(".", ","),
+                f"Custo de envio (absoluto, sem tarifa de cobranca): {abs(custo_envio):.2f}".replace(".", ","),
+                f"= Repasse: {repasse:.2f}".replace(".", ","),
+            ])
+        cel_repasse = _cel_detalhe(_valor_ml(repasse), detalhe_repasse)
+
         saida.append(f"""
             <tr data-pedido="{pedido}">
               <td class="chk-col"><input type="checkbox" class="chk-ajustado" data-pedido="{pedido}"></td>
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
-              <td class="num">{_valor_moeda_html(row['DIF'])}</td>
+              <td class="num">{_valor_moeda_html(dif)}</td>
               {cel_comissao}
               {cel_desconto}
               {cel_envio}
-              <td class="num">{_valor_ml(row.get('ML_TOTAL'))}</td>
+              {cel_repasse}
               {cel_rebate}
               <td class="acao">{html.escape(str(row.get('ACAO_SUGERIDA', '')))}</td>
             </tr>""")
@@ -208,23 +185,47 @@ def _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente):
     return linhas_html + status_html
 
 
+def _painel_conferencia_rbx(conf):
+    """Conta ORIGINAL (103925) x conta TRANSITORIA (X103925) -- ver
+    conferir_rbx.py. So chamado quando conf nao e None (arquivos
+    rb.xlsx/rbx.xlsx existem em AUXILIAR/)."""
+    def _linha(rotulo, valor, qtd, bate, msg_zero, verbo_ok, verbo_nao):
+        if qtd == 0:
+            return (
+                f'<div class="alvo-linha"><span>{rotulo}</span>'
+                f'<span class="ink-muted">{msg_zero}</span></div>'
+            )
+        cor = COR_OK if bate else COR_ALERTA
+        rotulo_status = verbo_ok if bate else verbo_nao
+        return (
+            f'<div class="alvo-linha alvo-destaque"><span>{rotulo}</span>'
+            f'<span class="num">{_moeda(valor)}</span></div>'
+            f'<div class="alvo-status" style="color:{cor}">'
+            f'<span class="ponto" style="background:{cor}"></span>{rotulo_status} '
+            f'({qtd} lancamento(s))</div>'
+        )
+
+    return (
+        _linha("Original (calendario)", conf["liquido_original"], conf["qtd_original"],
+               conf["original_bate"], "sem lancamento de fechamento ainda",
+               "bate com o calendario", "NAO bate com o calendario")
+        + _linha("Transitoria (tem que zerar)", conf["liquido_transitoria"], conf["qtd_transitoria"],
+                  conf["transitoria_zera"], "sem lancamentos encontrados",
+                  "zerou", "NAO zerou")
+    )
+
+
 def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_ref_rb,
                      caminho_xlsx_completo, caminho_xlsx_rebate, pasta_saida, alvo=None,
                      ml_atualizado=False, caminho_bat_scraper=None, raiz=None,
-                     caminho_xlsx_descricoes=None):
+                     caminho_xlsx_descricoes=None, conferencia_rbx=None, caminho_bat_atualizar=None,
+                     ml_de_cache=False):
     contagem = resultado["STATUS"].value_counts()
     total = len(resultado)
 
-    fatias = [(STATUS_COR[s], (contagem.get(s, 0) / total * 100) if total else 0) for s in STATUS_ORDEM]
-    donut = _donut_css(fatias)
-
-    legenda = "".join(
-        f'<div class="legenda-item"><span class="ponto" style="background:{STATUS_COR[s]}"></span>'
-        f'{s} <span class="ink-muted">({contagem.get(s, 0)})</span></div>'
-        for s in STATUS_ORDEM
-    )
-
     rebate_total = resultado.loc[resultado["STATUS"] == "REBATE", "REBATE"].sum()
+    est_com_total = resultado.loc[resultado["STATUS"] == "EST COM", "DIF"].sum()
+    mediacao_total = resultado.loc[resultado["STATUS"] == "MEDIACAO", "DIF"].sum()
     rb_total = resultado["TOTAL_RB"].sum()
     ajuste_pendente = fila_verificar["DIF"].sum()
     verificar_total = fila_verificar["DIF"].abs().sum()
@@ -232,8 +233,8 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     cards = [
         ("Total de pedidos", f"{total}", None),
         ("Rebate (formula)", _moeda(rebate_total), f"{contagem.get('REBATE', 0)} pedido(s)"),
-        ("Est. comissao", f"{contagem.get('EST COM', 0)}", "resolvido pela formula"),
-        ("Mediacao", f"{contagem.get('MEDIACAO', 0)}", "resolvido pela formula"),
+        ("Est. comissao", _moeda(est_com_total), f"{contagem.get('EST COM', 0)} pedido(s)"),
+        ("Mediacao", _moeda(mediacao_total), f"{contagem.get('MEDIACAO', 0)} pedido(s)"),
     ]
     cards_html = "".join(
         f'<div class="card"><div class="card-label">{l}</div><div class="card-valor">{v}</div>'
@@ -252,8 +253,8 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
 
     alvo_html = _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente)
     historico_html = _painel_historico(raiz) if raiz else ""
+    conferencia_html = _painel_conferencia_rbx(conferencia_rbx) if conferencia_rbx else ""
 
-    barras_html = _linhas_barra(fila_verificar) if verificar_qtd else '<p class="ink-muted">Nenhum pedido em VERIFICAR.</p>'
     tabela_html = (
         _linhas_tabela(fila_verificar) if verificar_qtd
         else '<tr><td colspan="9" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
@@ -274,15 +275,29 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
         botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_rebate)}">Baixar XLSX Rebate CMM ({len(rebate_cmm)})</a>')
     if caminho_xlsx_descricoes:
         botoes.append(f'<a class="botao" href="{html.escape(caminho_xlsx_descricoes)}">Baixar descricoes ML/MP</a>')
+    if caminho_bat_atualizar:
+        botoes.append(
+            f'<span class="botao" style="cursor:default">'
+            f'Atualizar (RB/RBX/AB): {html.escape(caminho_bat_atualizar)} (nessa mesma pasta -- da 2 cliques nele)</span>'
+        )
     botoes_html = "".join(botoes)
 
     titulo = f"Conciliacao {canal} - {data}"
     chave_local_storage = f"ajustados_{canal.lower()}_{data.replace('.', '')}"
-    aviso_ml_html = (
-        f'<div class="aviso-ml"><span class="ponto" style="background:{COR_OK}"></span>'
-        f'Valores do Mercado Livre atualizados</div>'
-        if ml_atualizado else ""
-    )
+    if ml_atualizado:
+        aviso_ml_html = (
+            f'<div class="aviso-ml"><span class="ponto" style="background:{COR_OK}"></span>'
+            f'Valores do Mercado Livre atualizados</div>'
+        )
+    elif ml_de_cache:
+        aviso_ml_html = (
+            '<div class="aviso-ml" style="background:#22262c;border-color:rgba(255,255,255,0.08);color:var(--ink-secondary)">'
+            '<span class="ponto" style="background:var(--ink-muted)"></span>'
+            'Valores do Mercado Livre de uma consulta anterior (rodou sem scraper) -- '
+            'pode ter pedido novo ainda sem consultar</div>'
+        )
+    else:
+        aviso_ml_html = ""
 
     corpo = f"""<!doctype html>
 <html lang="pt-br">
@@ -321,7 +336,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     background: #e0524f; color: #14161a; align-items: center; justify-content: center;
     font-weight: bold; margin-right: 6px; font-size: 0.8rem;
   }}
-  .grid-main {{ flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 260px 320px 1fr; gap: 14px; }}
+  .grid-main {{ flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 320px 1fr; gap: 14px; }}
   @media (max-width: 1000px) {{ html, body {{ overflow: auto; }} .wrap {{ height: auto; }} .grid-main {{ grid-template-columns: 1fr; }} }}
   .col {{ min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; }}
   .painel {{
@@ -329,31 +344,20 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     min-height: 0; min-width: 0; display: flex; flex-direction: column;
   }}
   .painel h2 {{ font-size: 0.85rem; margin: 0 0 10px; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.03em; }}
-  .cards {{ display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; }}
-  .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }}
-  .card-label {{ font-size: 0.75rem; color: var(--ink-secondary); }}
-  .card-valor {{ font-size: 1.3rem; font-weight: 600; margin-top: 2px; }}
-  .card-sub {{ font-size: 0.7rem; color: var(--ink-muted); margin-top: 2px; }}
-  .donut-box {{ display: flex; flex-direction: column; align-items: center; gap: 14px; }}
-  .donut {{ width: 110px; height: 110px; border-radius: 50%; background: {donut}; flex-shrink: 0; }}
-  .legenda {{ display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; width: 100%; }}
-  .legenda-item {{ display: flex; align-items: center; gap: 6px; }}
+  .cards {{ display: flex; flex-direction: row; flex-wrap: nowrap; gap: 12px; flex: 0 0 auto; }}
+  .card {{
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
+    width: auto; min-width: 150px; height: 76px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
+  }}
+  .card-label {{ font-size: 0.78rem; color: var(--ink-secondary); white-space: nowrap; }}
+  .card-valor {{ font-size: 1.35rem; font-weight: 600; margin-top: 4px; white-space: nowrap; }}
+  .card-sub {{ font-size: 0.7rem; color: var(--ink-muted); margin-top: 2px; white-space: nowrap; }}
   .ponto {{ width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
   .alvo-linha {{ display: flex; justify-content: space-between; gap: 10px; font-size: 0.82rem; padding: 4px 0; border-bottom: 1px dashed var(--gridline); }}
   .alvo-linha span:first-child {{ flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }}
   .alvo-linha .num {{ flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }}
   .alvo-destaque {{ border-bottom: none; padding-top: 8px; font-weight: 600; font-size: 0.9rem; }}
   .alvo-status {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-top: 8px; }}
-  .bar-row {{ display: grid; grid-template-columns: 80px 1fr 2px 1fr; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 0.75rem; }}
-  .bar-label {{ color: var(--ink-secondary); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-  .bar-center {{ background: var(--gridline); height: 100%; }}
-  .bar-neg-track {{ display: flex; justify-content: flex-end; align-items: center; gap: 6px; }}
-  .bar-pos-track {{ display: flex; align-items: center; gap: 6px; }}
-  .bar {{ height: 16px; border-radius: 4px; }}
-  .bar.neg {{ background: {COR_DIF_NEG}; }}
-  .bar.pos {{ background: {COR_DIF_POS}; }}
-  .bar-value {{ font-variant-numeric: tabular-nums; white-space: nowrap; }}
-  .barras-scroll {{ overflow-y: auto; min-height: 0; }}
   table {{ width: max-content; min-width: 100%; border-collapse: collapse; font-size: 0.8rem; }}
   th, td {{ text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }}
   th {{ position: sticky; top: 0; background: var(--surface); color: var(--ink-secondary); font-weight: 500; }}
@@ -386,31 +390,19 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   {aviso_ml_html}
   {alerta_html}
 
-  <div class="grid-main">
-    <div class="col">
-      <div class="cards">{cards_html}</div>
-      <div class="painel">
-        <h2>Status dos pedidos</h2>
-        <div class="donut-box">
-          <div class="donut"></div>
-          <div class="legenda">{legenda}</div>
-        </div>
-      </div>
-    </div>
+  <div class="cards">{cards_html}</div>
 
+  <div class="grid-main">
     <div class="col">
       <div class="painel">
         <h2>Alvo do dia</h2>
         {alvo_html}
       </div>
-      <div class="painel" style="flex: 1 1 auto;">
-        <h2>Distancia do alvo -- fila VERIFICAR (DIF)</h2>
-        <div class="barras-scroll">{barras_html}</div>
-      </div>
+      {f'<div class="painel"><h2>Original x Transitoria</h2>{conferencia_html}</div>' if conferencia_html else ""}
+      {f'<div class="painel"><h2>Historico TOTVS ({html.escape(canal)})</h2>{historico_html}</div>' if historico_html else ""}
     </div>
 
     <div class="col">
-      {f'<div class="painel"><h2>Historico TOTVS ({html.escape(canal)})</h2>{historico_html}</div>' if historico_html else ""}
       <div class="painel tabela-verificar">
         <h2>Fila VERIFICAR</h2>
         <div class="tabela-scroll">
@@ -473,11 +465,16 @@ if __name__ == "__main__":
 
     import pandas as pd
 
+    # soma dos absolutos, nao o absoluto da soma: |-30|+|20|+|-10| = 60
+    assert _repasse_calculado(-30.0, 20.0, -10.0) == 60.0
+    assert _repasse_calculado(None, 20.0, -10.0) is None
+
     resultado = pd.DataFrame({
         "PEDIDO_MKP": ["1", "2", "3"],
         "STATUS": ["SEM DIFF", "REBATE", "VERIFICAR"],
         "REBATE": [0.0, 50.0, 0.0],
         "TOTAL_RB": [100.0, 40.0, 0.0],
+        "DIF": [0.0, 0.0, -921.84],
     })
     fila = pd.DataFrame({
         "PEDIDO_MKP": ["3"], "DIF": [-921.84], "ACAO_SUGERIDA": ["Conferir Saldo no TOTVS."],
@@ -493,7 +490,8 @@ if __name__ == "__main__":
         assert os.path.exists(caminho)
         assert os.path.basename(caminho) == "dashboard_0101.html"  # 1 link, sem canal no nome
         conteudo = open(caminho, encoding="utf-8").read()
-        assert "VERIFICAR" in conteudo and "-R$ 921,84" in conteudo and "conic-gradient" in conteudo
+        assert "VERIFICAR" in conteudo and "-R$ 921,84" in conteudo
+        assert "Status dos pedidos" not in conteudo and "Distancia do alvo" not in conteudo
         assert "#14161a" in conteudo  # tema dark
         assert "Alvo nao cadastrado" in conteudo  # alvo=None
         assert "visibilitychange" in conteudo  # recarrega sozinho ao voltar pra aba

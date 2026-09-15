@@ -113,6 +113,26 @@ def gerar_bat_scraper(canal, data, pasta_saida, pasta_destino):
     return nome_bat
 
 
+def gerar_bat_atualizar(canal, data, pasta_saida, pasta_destino):
+    """.bat de 2 cliques que reroda essa conciliacao SEM scraper -- so pra
+    reler rb.xlsx/rbx.xlsx (AUXILIAR/) e o RB/AB mais recentes e regerar o
+    dashboard, sem precisar abrir o Chrome/scraper (rapido, so pandas).
+    Pedido do Everton, 16/09/2026: botao pra atualizar a conferencia
+    Original x Transitoria depois de lancar mais movimentos."""
+    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
+    nome_bat = f"atualizar_{sufixo}.bat"
+    caminho_bat = os.path.join(pasta_destino, nome_bat)
+    conteudo = (
+        "@echo off\n"
+        f'"{sys.executable}" "{os.path.abspath(__file__)}" '
+        f'--canal {canal} --data {data} --saida-pasta "{pasta_saida}"\n'
+        "pause\n"
+    )
+    with open(caminho_bat, "w", encoding="cp1252") as f:
+        f.write(conteudo)
+    return nome_bat
+
+
 def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
@@ -122,6 +142,7 @@ def executar(canal, data, pasta_saida, usar_scraper):
     caminho_bat_scraper = None
     if not usar_scraper and len(r["fila_verificar"]):
         caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida, pasta_conciliacoes)
+    caminho_bat_atualizar = gerar_bat_atualizar(canal, data, pasta_saida, pasta_conciliacoes)
 
     caminho_html_esperado = os.path.join(pasta_conciliacoes, f"dashboard_{data.replace('.', '')}.html")
     dashboard_ja_existia = os.path.exists(caminho_html_esperado)
@@ -136,6 +157,8 @@ def executar(canal, data, pasta_saida, usar_scraper):
         caminho_xlsx_descricoes=(
             os.path.basename(r["caminho_descricoes_xlsx"]) if r["caminho_descricoes_xlsx"] else None
         ),
+        conferencia_rbx=r["conferencia_rbx"], caminho_bat_atualizar=caminho_bat_atualizar,
+        ml_de_cache=r["ml_de_cache"],
     )
 
     print(f"Total de pedidos: {len(r['resultado'])}")
