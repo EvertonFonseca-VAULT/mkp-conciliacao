@@ -35,6 +35,8 @@ COR_DIF_POS = "#4a90e2"
 COR_DIF_NEG = "#e0524f"
 COR_OK = "#2fbf4f"
 COR_ALERTA = "#e0524f"
+COR_FUNDO_NEG = "#f5a3a0"
+COR_FUNDO_POS = "#8fd99f"
 
 MAX_LINHAS_BARRA = 20
 TOLERANCIA_ALVO = 0.01
@@ -44,6 +46,22 @@ def _moeda(valor):
     neg = valor < 0
     texto = f"{abs(valor):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     return f"{'-' if neg else ''}R$ {texto}"
+
+
+def _valor_moeda_html(valor):
+    """R$ num span simples do lado, numero (com o sinal de negativo junto)
+    num badge com fundo vermelho (negativo) ou verde (positivo) e letra
+    preta -- fica legivel tanto na tela quanto colado no Excel (nao herda
+    o --ink claro do tema dark)."""
+    neg = valor < 0
+    numero = f"{abs(valor):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    sinal = "-" if neg else ""
+    cor_fundo = COR_FUNDO_NEG if neg else COR_FUNDO_POS
+    return (
+        '<span class="ink-muted">R$</span> '
+        f'<span style="color:#111;background:{cor_fundo};padding:2px 6px;border-radius:4px">'
+        f"{sinal}{numero}</span>"
+    )
 
 
 def _donut_css(fatias):
@@ -89,7 +107,7 @@ def _valor_ml(v):
     if v is None or (isinstance(v, float) and v != v):  # None ou NaN
         return '<span class="ink-muted">—</span>'
     if isinstance(v, (int, float)):
-        return _moeda(v)
+        return _valor_moeda_html(v)
     return html.escape(str(v))
 
 
@@ -118,7 +136,7 @@ def _linhas_tabela(fila_verificar):
             <tr data-pedido="{pedido}">
               <td class="chk-col"><input type="checkbox" class="chk-ajustado" data-pedido="{pedido}"></td>
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
-              <td class="num">{_valor_copiavel_html(_moeda(row['DIF']))}</td>
+              <td class="num">{_valor_moeda_html(row['DIF'])}</td>
               <td class="num">{_valor_ml(row.get('ML_COMISSAO'))}</td>
               <td class="num">{_valor_ml(row.get('ML_ENVIO'))}</td>
               <td class="num">{_valor_ml(row.get('ML_TOTAL'))}</td>
