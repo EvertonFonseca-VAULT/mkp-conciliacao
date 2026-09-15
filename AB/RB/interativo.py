@@ -131,6 +131,9 @@ def executar(canal, data, pasta_saida, usar_scraper):
     # So abre aba nova na 1a vez do dia -- da 2a em diante a aba que ja
     # esta aberta se recarrega sozinha (visibilitychange, ver dashboard.py)
     # quando o Everton volta pra ela, sem precisar de outro link.
+    # ponytail: deteccao e por existencia do arquivo, nao da aba em si -- se
+    # o Everton fechar a aba, nao abre outra sozinho ate o dia seguinte
+    # (teria que apagar o dashboard_<data>.html pra forcar reabrir).
     if dashboard_ja_existia:
         print("Ja tem uma aba aberta com esse dashboard -- volta pra ela, atualiza sozinha.")
     else:
