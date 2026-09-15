@@ -10,10 +10,11 @@ Roda com o Python do venv do Screaper Mercado (tem playwright instalado):
     "C:\\Users\\everton.fonseca\\Desktop\\Projetos\\Screaper Mercado\\.venv\\Scripts\\python.exe" ...
 """
 
+import os
 import sys
 import time
 
-CAMINHO_SCRAPER = r"C:\Users\everton.fonseca\Desktop\Projetos\Screaper Mercado"
+CAMINHO_SCRAPER = os.path.join(os.path.expanduser("~"), "Desktop", "Projetos", "Screaper Mercado")
 if CAMINHO_SCRAPER not in sys.path:
     sys.path.insert(0, CAMINHO_SCRAPER)
 

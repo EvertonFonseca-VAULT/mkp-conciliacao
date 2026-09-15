@@ -23,10 +23,14 @@ from rodar_conciliacao_rb import processar
 
 # NAO importar scraper_ml aqui em cima -- ele importa playwright no topo do
 # arquivo, e o Python normal (sem scraper) nao tem playwright instalado.
-# Por isso o caminho do venv do scraper fica duplicado aqui (tem que bater
-# com CAMINHO_SCRAPER em scraper_ml.py).
-CAMINHO_SCRAPER = r"C:\Users\everton.fonseca\Desktop\Projetos\Screaper Mercado"
-PASTA_REDE_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\EVERTON"
+# CAMINHO_SCRAPER e calculado (nao mais hardcoded) -- tem que bater com o
+# mesmo calculo em CAMINHO_SCRAPER de scraper_ml.py.
+_HOME = os.path.expanduser("~")
+CAMINHO_SCRAPER = os.path.join(_HOME, "Desktop", "Projetos", "Screaper Mercado")
+PASTA_REDE_PADRAO = os.path.join(
+    r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\CONCILIACAO",
+    os.path.basename(_HOME),
+)
 SCRAPER_PYTHON = os.path.join(CAMINHO_SCRAPER, ".venv", "Scripts", "python.exe")
 
 
@@ -51,10 +55,12 @@ def perguntar_canal():
 
 
 def perguntar_data(canal):
+    pasta = CANAIS[canal]["pasta"]
+    print(f"\nBuscando 'Para Processar' em: {pasta}")
     datas = _listar_datas_disponiveis(canal)
     if not datas:
-        sys.exit(f"Nenhum arquivo 'Para Processar' encontrado pra {canal}.")
-    print("\nArquivos 'Para Processar' encontrados:")
+        sys.exit(f"Nenhum arquivo 'Para Processar' encontrado em {pasta}.")
+    print("Arquivos 'Para Processar' encontrados:")
     for i, data in enumerate(datas, 1):
         marca = "  <- mais recente" if i == 1 else ""
         print(f"  {i}) {data}{marca}")
@@ -103,15 +109,43 @@ def gerar_bat_scraper(canal, data, pasta_saida):
     return nome_bat
 
 
+def _garantir_atalho(pasta_saida):
+    """Cria/atualiza o atalho 'Rodar Conciliacao.lnk' na raiz da pasta de
+    saida, com o logo (logo.ico, do lado deste arquivo), apontando pro
+    .bat real -- roda de novo (idempotente) a cada execucao, entao todo
+    analista que rodar o programa ganha o atalho na propria pasta sem
+    precisar de setup manual. Nunca deve travar a conciliacao: qualquer
+    erro aqui e so um aviso."""
+    bat = os.path.abspath(os.path.join(os.path.dirname(__file__), "iniciar_conciliacao.bat"))
+    icone = os.path.abspath(os.path.join(os.path.dirname(__file__), "logo.ico"))
+    lnk = os.path.join(pasta_saida, "Rodar Conciliacao.lnk")
+    ps = (
+        "$s = New-Object -ComObject WScript.Shell; "
+        f"$a = $s.CreateShortcut('{lnk}'); "
+        f"$a.TargetPath = '{bat}'; "
+        f"$a.WorkingDirectory = '{os.path.dirname(bat)}'; "
+        f"$a.IconLocation = '{icone}'; "
+        "$a.Save()"
+    )
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                            capture_output=True, timeout=10, text=True)
+        if r.returncode != 0:
+            print(f"Aviso: nao consegui criar o atalho ({r.stderr.strip()[:200]}).")
+    except Exception as exc:
+        print(f"Aviso: nao consegui criar o atalho ({exc}).")
+
+
 def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
+    pasta_conciliacoes = os.path.join(pasta_saida, "Conciliacoes")
 
     caminho_bat_scraper = None
     if not usar_scraper and len(r["fila_verificar"]):
-        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida)
+        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_conciliacoes)
 
-    caminho_html_esperado = os.path.join(pasta_saida, f"dashboard_{data.replace('.', '')}.html")
+    caminho_html_esperado = os.path.join(pasta_conciliacoes, f"dashboard_{data.replace('.', '')}.html")
     dashboard_ja_existia = os.path.exists(caminho_html_esperado)
 
     caminho_html = gerar_dashboard(
@@ -119,9 +153,10 @@ def executar(canal, data, pasta_saida, usar_scraper):
         canal=canal, data=data, data_ref_rb=r["data_ref"],
         caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
         caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
-        pasta_saida=pasta_saida, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
+        pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
         caminho_bat_scraper=caminho_bat_scraper,
     )
+    _garantir_atalho(pasta_saida)
 
     print(f"Total de pedidos: {len(r['resultado'])}")
     for status, qtd in r["resultado"]["STATUS"].value_counts().items():

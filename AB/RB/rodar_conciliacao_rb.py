@@ -66,10 +66,13 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
     alvo = buscar_alvo(canal, data_ref)
 
-    os.makedirs(pasta_saida, exist_ok=True)
+    pasta_conciliacoes = os.path.join(pasta_saida, "Conciliacoes")
+    pasta_cmm = os.path.join(pasta_saida, "CMM")
+    os.makedirs(pasta_conciliacoes, exist_ok=True)
+    os.makedirs(pasta_cmm, exist_ok=True)
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
-    caminho_xlsx = os.path.join(pasta_saida, f"conciliacao_{sufixo}.xlsx")
-    caminho_rebate_xlsx = os.path.join(pasta_saida, f"rebate_cmm_{sufixo}.xlsx")
+    caminho_xlsx = os.path.join(pasta_conciliacoes, f"conciliacao_{sufixo}.xlsx")
+    caminho_rebate_xlsx = os.path.join(pasta_cmm, f"rebate_cmm_{sufixo}.xlsx")
 
     # AB (Para Processar) importado junto -- so pra nao precisar abrir o
     # arquivo original a parte enquanto o time se acostuma com essa planilha.
