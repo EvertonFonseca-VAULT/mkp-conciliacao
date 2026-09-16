@@ -25,6 +25,10 @@ CANAIS = {
         # Everton pediu pra manter "MO" ate testar com dado real do MOVEIS.
         "chave_rbx": "MO",
         "loja_calendario": "MOVEIS",
+        # prefixo_mov: NAO confirmado -- so testado com dado real do FULL
+        # ("MKP_ME_FULL"). Chute por analogia (MKP_ME_ + loja_calendario)
+        # ate confirmar com o MOVEIS de verdade.
+        "prefixo_mov": "MKP_ME_MOVEIS",
     },
     "FULL": {
         "raiz": "MKP_MELI_FU",
@@ -32,6 +36,11 @@ CANAIS = {
         "prefixo": "PROCESSAR_MERCADO FULL",
         "chave_rbx": "FU",  # confirmada com dado real 2x (01/09 e 02/09)
         "loja_calendario": "FULL",
+        # prefixo_mov: usado no HISTORICO das naturezas Frete/Comissao/Rebate
+        # (dashboard.py) -- confirmado com dado real do CMM_MELI_FULL
+        # (rotulos MKP_ME_FULL_DESPESAS DE FRETE ENVIO etc). Pedido do
+        # Everton, 17/09/2026.
+        "prefixo_mov": "MKP_ME_FULL",
     },
     "ES": {
         "raiz": "MKP_MELI_CO",
@@ -39,6 +48,7 @@ CANAIS = {
         "prefixo": "PROCESSAR_MERCADO COLETAS ES",
         "chave_rbx": "ES",  # pedido do Everton, ainda sem teste com dado real do ES
         "loja_calendario": "COLETAS ES",
+        "prefixo_mov": "MKP_ME_COLETAS ES",  # NAO confirmado, ver comentario do MOVEIS
     },
     "ELETRO": {
         "raiz": "MKP_MELI_ED",
@@ -46,6 +56,7 @@ CANAIS = {
         "prefixo": "MERCADO ELETRODOMESTICO",
         "chave_rbx": "ED",  # nunca testado com dado real do ELETRO
         "loja_calendario": "ELETRO",
+        "prefixo_mov": "MKP_ME_ELETRO",  # NAO confirmado, ver comentario do MOVEIS
     },
 }
 
