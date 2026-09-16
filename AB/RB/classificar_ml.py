@@ -145,6 +145,13 @@ def resumir_linhas(linhas, plataforma=None, pedido_ml=None):
     retorna. Usado tanto direto na raspagem quanto reconstruindo a partir
     de descricoes_ml_<canal>_<data>.xlsx (ver carregar_descricoes_salvas)."""
     grupos = _agrupar(linhas)
+    # Reembolsos e descartado ANTES de qualquer classificacao (nao so
+    # filtrado predicado a predicado): uma sublinha dentro dele pode conter
+    # a mesma substring de um rotulo valido (ex. "Cancelamento do custo de
+    # envio" contem "custo de envio" e seria somada junto do Custo de envio
+    # de verdade, inflando o valor -- bug real flagrado num print do
+    # Everton, pedido com reembolso total, 17/09/2026).
+    grupos = [g for g in grupos if "reembolso" not in g["label"].lower()]
     linhas_flat = _todas_linhas(grupos)
 
     grupo_comissao = _achar_grupo(grupos, _ROTULOS["comissao"])
@@ -237,5 +244,33 @@ if __name__ == "__main__":
     assert r["custo_envio"] == -44.05, r["custo_envio"]
     assert r["rebate"] == 47.6, r["rebate"]  # so o "pai", nao soma com a cancelamento
     assert r["desconto_bonus"] is None
+
+    # Pedido real com reembolso TOTAL (print do Everton, 17/09/2026) -- o
+    # grupo Reembolsos tem "Cancelamento do custo de envio: -184,99", que
+    # SEM o filtro de grupo seria somado ao Custo de envio de verdade
+    # (-106,95), dando -291,94 (bug real em producao, coluna Frete do
+    # pedido 2000018014989912). Com o filtro, Reembolsos inteiro e
+    # descartado antes de qualquer classificacao.
+    linhas_reembolso_total = [
+        ("Preço do produto (R$)", 1509.0),
+        ("Custo de envio (R$)", -106.95),
+        ("Tarifa de venda total (R$)", -64.68),
+        ("- Custo por vender no Mercado Livre (R$)", -48.42),
+        ("- Custo por cobrar no Mercado Pago (R$)", -14.52),
+        ("- Taxa de parcelamento (R$)", -1.74),
+        ("Recebimento pelo desconto da sua contraparte (R$)", 10.0),
+        ("Reembolsos (R$)", -1639.31),
+        ("- Cancelamento do pagamento recebido (R$)", -1509.0),
+        ("- Cancelamento do recebimento pelo desconto da sua contraparte (R$)", -10.0),
+        ("- Cancelamento de custo por vender no Mercado Livre (R$)", 48.42),
+        ("- Cancelamento de custo por cobrar no Mercado Pago (R$)", 14.52),
+        ("- Cancelamento da taxa de parcelamento (R$)", 1.74),
+        ("- Cancelamento do custo de envio (R$)", -184.99),
+    ]
+    r2 = resumir_linhas(linhas_reembolso_total)
+    assert r2["custo_envio"] == -106.95, r2["custo_envio"]  # sem o fix, dava -291.94
+    assert r2["comissao"] == -64.68
+    assert r2["rebate"] == 10.0
+    assert r2["desconto_bonus"] is None
 
     print("classificar_ml.py: ok")
