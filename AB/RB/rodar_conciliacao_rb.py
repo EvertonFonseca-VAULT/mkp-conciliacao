@@ -8,7 +8,7 @@ de baixa. Substitui o ciclo manual AB_MERCADO_TOTVS.xlsm + CONTROLE_V2.xlsx
 Uso (motor de classificacao, sem scraper -- roda com qualquer Python 3
 com pandas/openpyxl):
     python rodar_conciliacao_rb.py <CANAL> <DATA>
-    CANAL: MOVEIS | FULL | ES | ELETRO
+    CANAL: FULL (unico canal ativo por enquanto -- ver canais.py)
     DATA: dd.mm ou dd.mm.aaaa, igual ao nome do arquivo "Para Processar" do dia
 
 Uso com scraper do ML/MP (precisa do Chrome aberto com debug remoto, ja

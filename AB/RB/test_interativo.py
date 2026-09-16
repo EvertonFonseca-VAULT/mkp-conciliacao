@@ -1,6 +1,11 @@
-"""Self-check pro interativo.py -- garante que rodar FULL e depois ES no
-mesmo dia so abre 1 aba de navegador (a 2a rodada so sobrescreve o
-dashboard existente, ver comentario "ponytail" em interativo.executar)."""
+"""Self-check pro interativo.py -- garante que rodar FULL 2x no mesmo dia
+so abre 1 aba de navegador (a 2a rodada so sobrescreve o dashboard
+existente, ver comentario "ponytail" em interativo.executar).
+
+Antes rodava FULL e depois ES (2 canais de verdade), mas ES foi removido
+de canais.py (18/09/2026, projeto so roda FULL por enquanto) -- a mesma
+chamada FULL 2x cobre o comportamento testado (o dedup e por arquivo de
+dashboard, nao por canal)."""
 
 import os
 import webbrowser
@@ -25,7 +30,7 @@ if os.path.exists(CAMINHO_DASHBOARD):
     os.remove(CAMINHO_DASHBOARD)
 
 interativo.executar("FULL", DATA, PASTA, False)
-interativo.executar("ES", DATA, PASTA, False)
+interativo.executar("FULL", DATA, PASTA, False)
 
 assert len(chamadas) == 1, f"deveria abrir a aba so na 1a vez do dia, abriu {len(chamadas)}x"
-print("test_interativo.py: ok (abre so 1 vez, mesmo processando FULL e ES)")
+print("test_interativo.py: ok (abre so 1 vez, mesmo processando FULL 2x)")

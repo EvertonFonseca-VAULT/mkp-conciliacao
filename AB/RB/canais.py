@@ -16,20 +16,6 @@ import glob
 CAMINHO_RB_PADRAO = r"C:\TEMP\Conciliador - Backup\CONCILIADOR_RB.xlsx"
 
 CANAIS = {
-    "MOVEIS": {
-        "raiz": "MKP_MELI_MO",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MOVEIS",
-        "prefixo": "PROCESSAR_MERCADO MOVEIS",
-        # chave_rbx: NAO confirmada -- o extrato real do dia 2 mostrou "WEB"
-        # (MKP REPASSE MELI WEB, REC MKP MERCADO WEB...), nao "MO". O
-        # Everton pediu pra manter "MO" ate testar com dado real do MOVEIS.
-        "chave_rbx": "MO",
-        "loja_calendario": "MOVEIS",
-        # prefixo_mov: NAO confirmado -- so testado com dado real do FULL
-        # ("MKP_ME_FULL"). Chute por analogia (MKP_ME_ + loja_calendario)
-        # ate confirmar com o MOVEIS de verdade.
-        "prefixo_mov": "MKP_ME_MOVEIS",
-    },
     "FULL": {
         "raiz": "MKP_MELI_FU",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\FULL",
@@ -42,29 +28,14 @@ CANAIS = {
         # Everton, 17/09/2026.
         "prefixo_mov": "MKP_ME_FULL",
     },
-    "ES": {
-        "raiz": "MKP_MELI_CO",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES",
-        "prefixo": "PROCESSAR_MERCADO COLETAS ES",
-        "chave_rbx": "ES",  # pedido do Everton, ainda sem teste com dado real do ES
-        "loja_calendario": "COLETAS ES",
-        "prefixo_mov": "MKP_ME_COLETAS ES",  # NAO confirmado, ver comentario do MOVEIS
-    },
-    "ELETRO": {
-        "raiz": "MKP_MELI_ED",
-        "pasta": r"C:\RODAR TOTVS\ELETRODOMESTICO",
-        "prefixo": "MERCADO ELETRODOMESTICO",
-        "chave_rbx": "ED",  # nunca testado com dado real do ELETRO
-        "loja_calendario": "ELETRO",
-        "prefixo_mov": "MKP_ME_ELETRO",  # NAO confirmado, ver comentario do MOVEIS
-    },
 }
 
-# ES: raiz no canais.py (MKP_MELI_CO) diverge da tabela HISTORICOS do
-# CONTROLE_V2.xlsx (MKP_MELI_CO_ES) -- ainda nao confirmado qual esta certo
-# (15/09/2026, pedido do Everton). Ate confirmar, o painel "Historico TOTVS"
-# do dashboard nao mostra nada pra ES -- ver interativo.py/executar().
-CANAIS_SEM_RAIZ_CONFIRMADA = {"ES"}
+# MOVEIS/ES/ELETRO removidos daqui (18/09/2026, pedido do Everton): por
+# enquanto o projeto roda so FULL, nao e pra manter os outros canais
+# meio-configurados (config nunca confirmada com dado real deles). Quando
+# for a hora de replicar pra outro canal, volta no historico do git (commit
+# 142ffb8 em diante) pra recuperar os dicts antigos como ponto de partida.
+CANAIS_SEM_RAIZ_CONFIRMADA = set()
 
 
 def validar_data_rb(data_pedida, data_ref_rb):
