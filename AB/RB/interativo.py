@@ -157,17 +157,27 @@ def gerar_bat_arquivar(canal, data, pasta_saida):
     return nome_bat
 
 
-def gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida):
+def gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida, pasta_destino):
     """.bat de arrastar-e-soltar: o Everton arrasta o arquivo de resultado
     do TOTVS (marketplace...xls, nome com timestamp imprevisivel -- nao da
     pra saber o caminho na hora de gerar o .bat) em cima do .bat e solta;
     %~1 recebe o caminho largado. Gerado todo dia (nao condicional, ao
-    contrario do gerar_bat_arquivar) -- ver rebate_fora_da_regra.py. Fica
-    na RAIZ (pasta_saida), mesmo padrao dos outros bats. Pedido do
-    Everton, 18/09/2026."""
+    contrario do gerar_bat_arquivar) -- ver rebate_fora_da_regra.py.
+
+    Fica em pasta_destino (Conciliacoes/REBATE/, a mesma pasta onde
+    PROCESSAR_REBATE_<data>.xlsx ja cai e onde o Everton salva o arquivo
+    de recusa do TOTVS) -- excecao explicita a regra geral de "bat na
+    RAIZ" dos outros (pedido do proprio Everton, 18/09/2026, pra arrastar
+    sem trocar de pasta). O conteudo continua reinvocando com
+    --saida-pasta=pasta_saida (a RAIZ de verdade, nao pasta_destino) --
+    isso nao muda, so ONDE o arquivo .bat fica salvo em disco. REBATE so e
+    criada quando tem rebate de verdade no dia (ver
+    rodar_conciliacao_rb._caminho_rebate_processar) -- pode nao existir
+    ainda."""
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     nome_bat = f"rebate_fora_da_regra_{sufixo}.bat"
-    caminho_bat = os.path.join(pasta_saida, nome_bat)
+    os.makedirs(pasta_destino, exist_ok=True)
+    caminho_bat = os.path.join(pasta_destino, nome_bat)
     conteudo = (
         "@echo off\n"
         'if "%~1"=="" (\n'
@@ -194,7 +204,7 @@ def executar(canal, data, pasta_saida, usar_scraper):
     if not usar_scraper and len(r["fila_verificar"]):
         caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida)
     caminho_bat_atualizar = gerar_bat_atualizar(canal, data, pasta_saida)
-    gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida)
+    gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida, os.path.join(pasta_conciliacoes, "REBATE"))
     # So gera o bat de arquivar quando a Transitoria bate com o alvo (pronta
     # pra transferencia) -- NAO arquiva sozinho: o Everton ainda precisa
     # clicar, depois de fazer a transferencia manual de verdade. Pedido do
@@ -330,7 +340,13 @@ def _testar_bats():
         nome_scraper = gerar_bat_scraper("FULL", "01.09", pasta_saida)
         nome_atualizar = gerar_bat_atualizar("FULL", "01.09", pasta_saida)
         nome_arquivar = gerar_bat_arquivar("FULL", "01.09", pasta_saida)
-        nome_fora_da_regra = gerar_bat_rebate_fora_da_regra("FULL", "01.09", pasta_saida)
+        # pasta_destino (Conciliacoes/REBATE/) de proposito NAO criada
+        # antes -- dia sintetico sem nenhum rebate, REBATE so e criada
+        # por rodar_conciliacao_rb.py quando tem rebate de verdade. O bat
+        # tem que criar sozinho (os.makedirs), senao a escrita falha.
+        pasta_rebate = os.path.join(pasta_saida, "Conciliacoes", "REBATE")
+        assert not os.path.exists(pasta_rebate)
+        nome_fora_da_regra = gerar_bat_rebate_fora_da_regra("FULL", "01.09", pasta_saida, pasta_rebate)
         assert nome_scraper == "rodar_scraper_full_0109.bat", nome_scraper
         assert nome_atualizar == "atualizar_full_0109.bat", nome_atualizar
         assert nome_arquivar == "arquivar_rbx_full_0109.bat", nome_arquivar
@@ -338,18 +354,25 @@ def _testar_bats():
         assert os.path.exists(os.path.join(pasta_saida, nome_scraper))
         assert os.path.exists(os.path.join(pasta_saida, nome_atualizar))
         assert os.path.exists(os.path.join(pasta_saida, nome_arquivar))
-        assert os.path.exists(os.path.join(pasta_saida, nome_fora_da_regra))
+        # excecao explicita: esse bat fica em Conciliacoes/REBATE/, nao na
+        # RAIZ como os outros 3 -- pedido do Everton (arrastar sem trocar
+        # de pasta, mesmo lugar do PROCESSAR_REBATE_<data>.xlsx).
+        assert not os.path.exists(os.path.join(pasta_saida, nome_fora_da_regra))
+        assert os.path.exists(os.path.join(pasta_rebate, nome_fora_da_regra))
         # nao pode ter ido pra dentro de nenhuma subpasta
         assert not os.path.exists(os.path.join(pasta_saida, "Conciliacoes", nome_scraper))
         # o bat reinvoca com --arquivar-rbx, sem rodar o resto do pipeline
         conteudo_arquivar = open(os.path.join(pasta_saida, nome_arquivar), encoding="cp1252").read()
         assert "--arquivar-rbx" in conteudo_arquivar, conteudo_arquivar
         # arrastar-e-soltar: sem arquivo, avisa e sai (exit /b 1) sem travar
-        # no resto do .bat; com arquivo, %~1 vira o caminho pro flag.
-        conteudo_fora_da_regra = open(os.path.join(pasta_saida, nome_fora_da_regra), encoding="cp1252").read()
+        # no resto do .bat; com arquivo, %~1 vira o caminho pro flag; e o
+        # --saida-pasta embutido continua sendo a RAIZ de verdade (pasta_saida),
+        # nao a pasta_destino onde o .bat foi parar.
+        conteudo_fora_da_regra = open(os.path.join(pasta_rebate, nome_fora_da_regra), encoding="cp1252").read()
         assert 'if "%~1"=="" (' in conteudo_fora_da_regra
         assert "exit /b 1" in conteudo_fora_da_regra
         assert '--rebate-fora-da-regra "%~1"' in conteudo_fora_da_regra
+        assert f'--saida-pasta "{pasta_saida}"' in conteudo_fora_da_regra
     print("interativo.py: ok")
 
 
