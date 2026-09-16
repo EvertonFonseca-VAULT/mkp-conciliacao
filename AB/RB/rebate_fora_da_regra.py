@@ -82,17 +82,20 @@ def _ler_fora_da_regra_spreadsheetml(caminho_xls):
 
 
 def gerar_rebate_fora_da_regra_cmm(caminho_xls, raiz, data_ref, responsavel):
-    loja = raiz.split("_")[-1]
+    # raiz nao usada pro LOJA (era raiz.split("_")[-1], dava "FU" -- campo
+    # errado) -- arquivo e 100% hardcoded pro FULL, "FULL" direto, nem
+    # precisa do split. Fica no parametro (CLI/interativo.py ja passam)
+    # pra quando outro canal for confirmado. Everton, 18/09/2026.
     linhas = [{
         "RESPONSAVEL": responsavel,
         "DATA_LACTO": data_ref,
         "ORIGEM": "MKP",
         "PAGADOR": "MELI",
-        "LOJA": loja,
+        "LOJA": "FULL",
         "MOTIVO DO MOVIMENTO": MOTIVO_REBATE,
         "NATUREZA": NATUREZA_REBATE,
         "PEDIDO MKP / CV": pedido,
-        "VENDEDOR": None,
+        "VENDEDOR": "751",
         "BANCO": BANCO,
         "AGENCIA": AGENCIA,
         "CONTA": CONTA,
@@ -176,14 +179,14 @@ if __name__ == "__main__":
         assert ("2000017834924604", -30.5) in fora
         assert ("2000018025209720", 119.0) not in [(p, v) for p, v in fora]  # baixou sozinho, fora
 
-        df = gerar_rebate_fora_da_regra_cmm(caminho, "AB_ELETROD", "16/09/2026", "Everton")
+        df = gerar_rebate_fora_da_regra_cmm(caminho, "MKP_MELI_FU", "16/09/2026", "Everton")
         assert list(df.columns) == COLUNAS
         assert len(df) == 7
         assert (df["BANCO"] == BANCO).all() and (df["AGENCIA"] == AGENCIA).all() and (df["CONTA"] == CONTA).all()
-        assert (df["LOJA"] == "ELETROD").all()
+        assert (df["LOJA"] == "FULL").all()  # hardcoded, nao raiz.split("_")[-1] ("FU")
         assert (df["NATUREZA"] == NATUREZA_REBATE).all()
         assert (df["HISTORICO"] == "MKP_ME_FULL_RECEBIMENTO DE REBATE").all()
-        assert df["VENDEDOR"].isna().all()
+        assert (df["VENDEDOR"] == "751").all()
 
     # 2o formato real: .xlsx OOXML de verdade (nao SpreadsheetML/XML) --
     # mesma estrutura de colunas, so o arquivo em si e outro formato.
@@ -219,8 +222,10 @@ if __name__ == "__main__":
         assert ("2000017997530922", 60.0) in fora_xlsx
         assert ("2000018049543972", 164.8) in fora_xlsx
 
-        df_xlsx = gerar_rebate_fora_da_regra_cmm(caminho_xlsx, "AB_ELETROD", "16/09/2026", "Everton")
+        df_xlsx = gerar_rebate_fora_da_regra_cmm(caminho_xlsx, "MKP_MELI_FU", "16/09/2026", "Everton")
         assert len(df_xlsx) == 2
+        assert (df_xlsx["LOJA"] == "FULL").all()
+        assert (df_xlsx["VENDEDOR"] == "751").all()
         assert (df_xlsx["HISTORICO"] == "MKP_ME_FULL_RECEBIMENTO DE REBATE").all()
 
     print("rebate_fora_da_regra.py: ok")

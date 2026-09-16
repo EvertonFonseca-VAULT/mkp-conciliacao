@@ -69,7 +69,7 @@ _CAMPOS_CMM_JS = {
     "MOTIVO DO MOVIMENTO": "chk.dataset.motivo", "NATUREZA": "chk.dataset.natureza",
     # apostrofo na frente, igual _pedido_html -- sem isso o pedido (ate 16
     # digitos) vira notacao cientifica ao colar no Excel.
-    "PEDIDO MKP / CV": "\"'\" + chk.dataset.pedido", "VENDEDOR": '""',
+    "PEDIDO MKP / CV": "\"'\" + chk.dataset.pedido", "VENDEDOR": "VENDEDOR",
     "BANCO": "chk.dataset.banco", "AGENCIA": "chk.dataset.agencia",
     "CONTA": "chk.dataset.conta", "HISTORICO": "chk.dataset.historico",
     "VALOR R$": "chk.dataset.valor", "OBSERVACAO": '""',
@@ -437,12 +437,13 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     # NATUREZA (Frete/Rebate marcados na fila VERIFICAR) -- HISTORICO/LOJA
     # derivados de CANAIS[canal] direto (nao do parametro `raiz`, que fica
     # None pros canais em CANAIS_SEM_RAIZ_CONFIRMADA -- essa marcacao nao
-    # depende daquela confirmacao especifica). loja = mesma formula ja
-    # confirmada em rebate_cmm.gerar_rebate_cmm (raiz.split("_")[-1]).
+    # depende daquela confirmacao especifica). loja_calendario, nao
+    # raiz.split("_")[-1] (dava "FU" pro FULL -- "FU" e o chave_rbx, usado
+    # pra achar linha no extrato, nao o valor certo do campo LOJA do
+    # CMM/MOV). Confirmado com o Everton, 18/09/2026.
     cfg_canal = CANAIS.get(canal, {})
-    raiz_canal = cfg_canal.get("raiz", "")
     prefixo_mov = cfg_canal.get("prefixo_mov")
-    loja = raiz_canal.split("_")[-1] if raiz_canal else ""
+    loja = cfg_canal.get("loja_calendario", "")
     historicos = (
         {
             "frete": f"{prefixo_mov}_{MOTIVO_FRETE}",
@@ -740,6 +741,9 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   var ORIGEM = "MKP";
   var PAGADOR = "MELI";
   var LOJA = {json.dumps(loja)};
+  // "751" confirmado pro FULL (18/09/2026) -- so o FULL existe
+  // configurado hoje, ver rebate_cmm.py/rebate_fora_da_regra.py.
+  var VENDEDOR = "751";
 
   var CHAVE_NATUREZA = CHAVE + "_natureza";
   var marcadosNatureza;
@@ -920,7 +924,8 @@ if __name__ == "__main__":
         assert 'data-valor="-25,50"' in conteudo and 'data-valor="30,00"' in conteudo
         assert 'chk-natureza' in conteudo and 'painel-natureza' in conteudo
         assert 'var RESPONSAVEL = "EVERTON";' in conteudo
-        assert 'var LOJA = "FU";' in conteudo  # raiz.split("_")[-1], "MKP_MELI_FU"
+        assert 'var LOJA = "FULL";' in conteudo  # loja_calendario, nao raiz.split("_")[-1] ("FU")
+        assert 'var VENDEDOR = "751";' in conteudo
         assert "onclick=\"copiarNatureza('ta-natureza-cmm', this)\"" in conteudo
         assert 'botao.textContent = "Copiado!";' in conteudo
 
