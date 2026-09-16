@@ -91,17 +91,16 @@ def relancar_com_scraper(canal, data, pasta_saida):
     return subprocess.run(cmd).returncode
 
 
-def gerar_bat_scraper(canal, data, pasta_saida, pasta_destino):
+def gerar_bat_scraper(canal, data, pasta_saida):
     """.bat de 2 cliques que reroda essa mesma conciliacao com --scraper --
-    fica salvo em pasta_destino (Conciliacoes/, do lado do dashboard) mas
-    reinvoca com --saida-pasta=pasta_saida (a RAIZ, nao Conciliacoes/) --
-    executar()/processar() recalculam as subpastas Conciliacoes/CMM a
-    partir dela; passar a subpasta aqui geraria Conciliacoes/Conciliacoes
-    aninhado, escrevendo num lugar diferente do dashboard que o usuario
-    esta olhando."""
+    fica salvo na RAIZ (pasta_saida, do lado do iniciar_conciliacao.bat), nao
+    dentro de Conciliacoes/: so reinvoca com --saida-pasta=pasta_saida, nao
+    precisa morar junto do dashboard/xlsx. Pedido do Everton, 15/09/2026 --
+    antes ia pra pasta_destino (Conciliacoes/) so por causa do calculo de
+    --saida-pasta, e misturava .bat com arquivo de dado."""
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     nome_bat = f"rodar_scraper_{sufixo}.bat"
-    caminho_bat = os.path.join(pasta_destino, nome_bat)
+    caminho_bat = os.path.join(pasta_saida, nome_bat)
     conteudo = (
         "@echo off\n"
         f'"{SCRAPER_PYTHON}" "{os.path.abspath(__file__)}" '
@@ -113,19 +112,44 @@ def gerar_bat_scraper(canal, data, pasta_saida, pasta_destino):
     return nome_bat
 
 
-def gerar_bat_atualizar(canal, data, pasta_saida, pasta_destino):
+def gerar_bat_atualizar(canal, data, pasta_saida):
     """.bat de 2 cliques que reroda essa conciliacao SEM scraper -- so pra
     reler rb.xlsx/rbx.xlsx (AUXILIAR/) e o RB/AB mais recentes e regerar o
     dashboard, sem precisar abrir o Chrome/scraper (rapido, so pandas).
     Pedido do Everton, 16/09/2026: botao pra atualizar a conferencia
-    Original x Transitoria depois de lancar mais movimentos."""
+    Original x Transitoria depois de lancar mais movimentos. Fica salvo na
+    RAIZ (pasta_saida), ver gerar_bat_scraper."""
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     nome_bat = f"atualizar_{sufixo}.bat"
-    caminho_bat = os.path.join(pasta_destino, nome_bat)
+    caminho_bat = os.path.join(pasta_saida, nome_bat)
     conteudo = (
         "@echo off\n"
         f'"{sys.executable}" "{os.path.abspath(__file__)}" '
         f'--canal {canal} --data {data} --saida-pasta "{pasta_saida}"\n'
+        "pause\n"
+    )
+    with open(caminho_bat, "w", encoding="cp1252") as f:
+        f.write(conteudo)
+    return nome_bat
+
+
+def gerar_bat_arquivar(canal, data, pasta_saida):
+    """.bat de 2 cliques que arquiva uma copia do rbx.xlsx (AUXILIAR/) em
+    CAMINHO_ARQUIVO_MARKETPLACE, com as formulas E3/F3/G3 -- ver
+    rodar_conciliacao_rb._arquivar_rbx. So gerado quando a Transitoria fica
+    pronta pra transferencia (ver executar()) -- NAO roda sozinho, precisa
+    do clique do Everton, pra nao arquivar antes da transferencia manual de
+    verdade ter acontecido. Fica salvo na RAIZ (pasta_saida), mesmo padrao
+    de gerar_bat_scraper/gerar_bat_atualizar. Sem parametro raiz: o proprio
+    main() (--arquivar-rbx) reconsulta CANAIS[canal]["raiz"] na hora, o .bat
+    so precisa levar canal/data. Pedido do Everton, 17/09/2026."""
+    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
+    nome_bat = f"arquivar_rbx_{sufixo}.bat"
+    caminho_bat = os.path.join(pasta_saida, nome_bat)
+    conteudo = (
+        "@echo off\n"
+        f'"{sys.executable}" "{os.path.abspath(__file__)}" '
+        f'--canal {canal} --data {data} --saida-pasta "{pasta_saida}" --arquivar-rbx\n'
         "pause\n"
     )
     with open(caminho_bat, "w", encoding="cp1252") as f:
@@ -141,8 +165,15 @@ def executar(canal, data, pasta_saida, usar_scraper):
 
     caminho_bat_scraper = None
     if not usar_scraper and len(r["fila_verificar"]):
-        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida, pasta_conciliacoes)
-    caminho_bat_atualizar = gerar_bat_atualizar(canal, data, pasta_saida, pasta_conciliacoes)
+        caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida)
+    caminho_bat_atualizar = gerar_bat_atualizar(canal, data, pasta_saida)
+    # So gera o bat de arquivar quando a Transitoria bate com o alvo (pronta
+    # pra transferencia) -- NAO arquiva sozinho: o Everton ainda precisa
+    # clicar, depois de fazer a transferencia manual de verdade. Pedido do
+    # Everton, 17/09/2026.
+    caminho_bat_arquivar = None
+    if r["conferencia_rbx"] and r["conferencia_rbx"]["pronta_para_transferencia"]:
+        caminho_bat_arquivar = gerar_bat_arquivar(canal, data, pasta_saida)
 
     caminho_html_esperado = os.path.join(pasta_conciliacoes, f"dashboard_{data.replace('.', '')}.html")
     dashboard_ja_existia = os.path.exists(caminho_html_esperado)
@@ -153,12 +184,27 @@ def executar(canal, data, pasta_saida, usar_scraper):
         caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
         caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
         pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
-        caminho_bat_scraper=caminho_bat_scraper, raiz=raiz_confirmada,
+        # Os .bat ficam na RAIZ (pasta_saida), 1 nivel acima do dashboard.html
+        # (Conciliacoes/) -- ver gerar_bat_scraper/gerar_bat_atualizar.
+        caminho_bat_scraper=f"../{caminho_bat_scraper}" if caminho_bat_scraper else None,
+        raiz=raiz_confirmada,
+        # Descricoes agora e pasta irma de Conciliacoes (onde o dashboard.html
+        # fica) -- basename sozinho quebraria o link, precisa subir 1 nivel.
         caminho_xlsx_descricoes=(
-            os.path.basename(r["caminho_descricoes_xlsx"]) if r["caminho_descricoes_xlsx"] else None
+            f"../Descricoes/{os.path.basename(r['caminho_descricoes_xlsx'])}"
+            if r["caminho_descricoes_xlsx"] else None
         ),
-        conferencia_rbx=r["conferencia_rbx"], caminho_bat_atualizar=caminho_bat_atualizar,
-        ml_de_cache=r["ml_de_cache"],
+        conferencia_rbx=r["conferencia_rbx"],
+        caminho_bat_atualizar=f"../{caminho_bat_atualizar}",
+        caminho_bat_arquivar=f"../{caminho_bat_arquivar}" if caminho_bat_arquivar else None,
+        ml_de_cache=r["ml_de_cache"], responsavel=r["responsavel"],
+        rebate_processar=r["rebate_processar"],
+        # REBATE e subpasta de Conciliacoes (onde o dashboard.html ja fica),
+        # nao irma dela -- sem "../" (diferente de Descricoes, que e irma).
+        caminho_xlsx_rebate_processar=(
+            f"REBATE/{os.path.basename(r['caminho_rebate_processar_xlsx'])}"
+            if r["caminho_rebate_processar_xlsx"] else None
+        ),
     )
 
     print(f"Total de pedidos: {len(r['resultado'])}")
@@ -184,7 +230,20 @@ def main():
     parser.add_argument("--data")
     parser.add_argument("--saida-pasta", default=PASTA_REDE_PADRAO)
     parser.add_argument("--scraper", action="store_true")
+    parser.add_argument("--arquivar-rbx", action="store_true")
     args = parser.parse_args()
+
+    if args.arquivar_rbx:
+        # Reinvocado pelo bat de 2 cliques (ver gerar_bat_arquivar) -- so
+        # arquiva e sai, nao roda o resto do pipeline (agregar/cruzar/
+        # dashboard). Pedido do Everton, 17/09/2026.
+        from rodar_conciliacao_rb import _arquivar_rbx
+
+        canal = args.canal.upper()
+        caminho_rbx = os.path.join(args.saida_pasta, "AUXILIAR", "rbx.xlsx")
+        caminho_destino = _arquivar_rbx(canal, args.data, CANAIS[canal]["raiz"], caminho_rbx)
+        print(f"RBX arquivado: {caminho_destino}")
+        return
 
     if args.canal and args.data:
         # re-execucao interna (com o Python certo pro scraper) -- sem perguntas
@@ -216,5 +275,32 @@ def main():
             break
 
 
+def _testar_bats():
+    """gerar_bat_scraper/gerar_bat_atualizar tem que salvar na RAIZ
+    (pasta_saida), nao em Conciliacoes/ -- pedido do Everton, 15/09/2026:
+    os .bat todos juntos, so xlsx/html dentro das subpastas."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as pasta_saida:
+        nome_scraper = gerar_bat_scraper("FULL", "01.09", pasta_saida)
+        nome_atualizar = gerar_bat_atualizar("FULL", "01.09", pasta_saida)
+        nome_arquivar = gerar_bat_arquivar("FULL", "01.09", pasta_saida)
+        assert nome_scraper == "rodar_scraper_full_0109.bat", nome_scraper
+        assert nome_atualizar == "atualizar_full_0109.bat", nome_atualizar
+        assert nome_arquivar == "arquivar_rbx_full_0109.bat", nome_arquivar
+        assert os.path.exists(os.path.join(pasta_saida, nome_scraper))
+        assert os.path.exists(os.path.join(pasta_saida, nome_atualizar))
+        assert os.path.exists(os.path.join(pasta_saida, nome_arquivar))
+        # nao pode ter ido pra dentro de nenhuma subpasta
+        assert not os.path.exists(os.path.join(pasta_saida, "Conciliacoes", nome_scraper))
+        # o bat reinvoca com --arquivar-rbx, sem rodar o resto do pipeline
+        conteudo_arquivar = open(os.path.join(pasta_saida, nome_arquivar), encoding="cp1252").read()
+        assert "--arquivar-rbx" in conteudo_arquivar, conteudo_arquivar
+    print("interativo.py: ok")
+
+
 if __name__ == "__main__":
-    main()
+    if "--self-test" in sys.argv:
+        _testar_bats()
+    else:
+        main()

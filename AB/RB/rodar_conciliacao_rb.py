@@ -18,8 +18,10 @@ Python do venv do Screaper Mercado, que tem playwright):
 """
 
 import os
+import shutil
 import sys
 
+import openpyxl
 import pandas as pd
 
 from agregador import agregar_por_pedido
@@ -31,6 +33,39 @@ from descricoes_ml import gerar_descricoes_ml
 from enriquecer import enriquecer
 from parser_rb import carregar_rb, metadata_rb
 from rebate_cmm import gerar_rebate_cmm
+from rebate_processar import gerar_rebate_processar, salvar_rebate_processar
+
+# Pasta onde o Everton arquiva uma copia do rbx.xlsx quando a Transitoria
+# fica pronta pra transferencia (ver conferir_rbx.conferir -- chave
+# "pronta_para_transferencia"). So um registro historico de qual RBX
+# motivou qual transferencia -- NAO roda sozinho, ver _arquivar_rbx().
+CAMINHO_ARQUIVO_MARKETPLACE = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CONCILIAÇÕES DE MARKETPLACE\MERCADO"
+
+
+def _arquivar_rbx(canal, data, raiz, caminho_rbx):
+    """Copia o rbx.xlsx pra CAMINHO_ARQUIVO_MARKETPLACE/<ano>/<mes>.<ano>/
+    <data>_<raiz>.xlsx e grava, na linha 3 (mesma linha de "Emissao:"), as
+    formulas que o Everton usa pra provar visualmente que bateu: E3/F3 somam
+    ENTRADAS/SAIDAS (SUBTOTAL, ignora linhas filtradas) e G3 = E3-F3 (o
+    liquido). NAO chama sozinha em processar() -- so quando o Everton clica
+    no botao "Arquivar RBX" do dashboard (gerado quando
+    conferencia_rbx["pronta_para_transferencia"] fica True), pra nao
+    arquivar antes da transferencia manual de verdade ter acontecido.
+    Pedido do Everton, 17/09/2026."""
+    dia, mes, ano = data.split(".")
+    pasta_destino = os.path.join(CAMINHO_ARQUIVO_MARKETPLACE, ano, f"{mes}.{ano}")
+    os.makedirs(pasta_destino, exist_ok=True)
+    caminho_destino = os.path.join(pasta_destino, f"{data}_{raiz}.xlsx")
+    shutil.copy2(caminho_rbx, caminho_destino)
+
+    wb = openpyxl.load_workbook(caminho_destino)
+    ws = wb.active
+    ultima_linha = ws.max_row
+    ws["E3"] = f"=SUBTOTAL(9,E6:E{ultima_linha})"
+    ws["F3"] = f"=SUBTOTAL(9,F6:F{ultima_linha})"
+    ws["G3"] = "=E3-F3"
+    wb.save(caminho_destino)
+    return caminho_destino
 
 
 def rodar(caminho_para_processar, caminho_rb):
@@ -38,6 +73,32 @@ def rodar(caminho_para_processar, caminho_rb):
     rb = carregar_rb(caminho_rb)
     agregado = agregar_por_pedido(para_processar)
     return cruzar_com_rb(agregado, rb, para_processar), rb, para_processar
+
+
+def _ordenar_fila_verificar(resultado):
+    """Fila VERIFICAR em 2 grupos separados por sinal, nao por modulo -- o
+    Everton lanca no TOTVS em lote (todo positivo primeiro, depois todo
+    negativo, pra nao ficar abrindo o sistema toda hora): positivos do
+    maior pro menor, negativos do mais negativo pro mais perto de zero.
+    Ex.: 1000, 500, -1500, -300. Substitui a ordenacao por abs() (que
+    misturava sinal e nao servia mais pra esse fluxo). Pedido do Everton,
+    17/09/2026."""
+    verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
+    positivos = verificar[verificar["DIF"] >= 0].sort_values("DIF", ascending=False)
+    negativos = verificar[verificar["DIF"] < 0].sort_values("DIF", ascending=True)
+    return pd.concat([positivos, negativos])
+
+
+def _caminho_rebate_processar(pasta_processar_rebate, data_ref, rebate_processar):
+    """None quando nao ha nada pra gerar (canal != FULL, ja filtrado antes
+    de chamar isso -- rebate_processar vem None -- ou REBATE vazio no dia).
+    Nome usa data_ref (dd/mm/aaaa, data real do RB) com pontos, mesma
+    convencao dos arquivos que o processo automatico do TOTVS ja consome
+    (ex. "PROCESSAR_MERCADO FULL dd.mm.aaaa.xlsx", ver canais.py) -- nao o
+    `data` da linha de comando, que pode vir sem o ano (ex. "01.09")."""
+    if rebate_processar is None or not len(rebate_processar):
+        return None
+    return os.path.join(pasta_processar_rebate, f"PROCESSAR_REBATE_{data_ref.replace('/', '.')}.xlsx")
 
 
 def processar(canal, data, pasta_saida=".", usar_scraper=False):
@@ -55,7 +116,11 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
 
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
-    caminho_descricoes_existente = os.path.join(pasta_saida, "Conciliacoes", f"descricoes_ml_{sufixo}.xlsx")
+    # "Descricoes", nao "Conciliacoes" -- desde 15/09/2026 o
+    # descricoes_ml_*.xlsx salva em pasta_saida/Descricoes/ (ver mais
+    # abaixo). Esse caminho aqui precisa bater com o de la, senao o cache
+    # nunca acha o arquivo que ele mesmo salvou da ultima vez.
+    caminho_descricoes_existente = os.path.join(pasta_saida, "Descricoes", f"descricoes_ml_{sufixo}.xlsx")
 
     ml_dados = None
     ml_de_cache = False
@@ -75,10 +140,13 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         ml_de_cache = ml_dados is not None
 
     resultado = enriquecer(resultado, raiz, ml_dados)
-    fila_verificar = resultado[resultado["STATUS"] == "VERIFICAR"].sort_values(
-        "DIF", ascending=False
-    )
+    fila_verificar = _ordenar_fila_verificar(resultado)
     rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
+    # PROCESSAR_REBATE: 2o layout do rebate, so pro FULL -- ver
+    # rebate_processar.py. Nao substitui o Rebate CMM, e um output a mais
+    # (importa direto no processo automatico do TOTVS, pasta
+    # C:\RODAR TOTVS\PROCESSAR\REBATE\). Pedido do Everton, 17/09/2026.
+    rebate_processar = gerar_rebate_processar(resultado, data_ref) if canal == "FULL" else None
     alvo = buscar_alvo(canal, data_ref)
     # Confere as 2 contas (original x transitoria) contra rb.xlsx/rbx.xlsx
     # que o analista salva na mao em AUXILIAR/ -- None se ainda nao gerou
@@ -86,16 +154,33 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     # conferir_rbx.py.
     conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"))
 
+    # Descricoes irma de Conciliacoes/CMM (mesmo padrao ja usado na pasta do
+    # Everton: AUXILIAR/CMM/Conciliacoes soltas na raiz) -- antes o
+    # descricoes_ml_*.xlsx ia direto pra dentro de Conciliacoes/ e ficava
+    # misturado com os conciliacao_*.xlsx. Pedido do Everton, 15/09/2026.
     pasta_conciliacoes = os.path.join(pasta_saida, "Conciliacoes")
-    pasta_cmm = os.path.join(pasta_saida, "CMM")
+    # "Rebate_CMM" (nao "CMM") -- o Everton ja usa "CMM" pra outra coisa (a
+    # planilha CMM_MELI_FULL_Controle de Movimentos Manual de verdade), e o
+    # nome curto colidia visualmente com essa pasta gerada pelo pipeline
+    # (so tem o export auxiliar rebate_cmm_*.xlsx). Pedido do Everton,
+    # 17/09/2026.
+    pasta_cmm = os.path.join(pasta_saida, "Rebate_CMM")
+    pasta_descricoes = os.path.join(pasta_saida, "Descricoes")
+    # REBATE dentro de Conciliacoes/ (nao irma dela) -- pedido do Everton,
+    # 17/09/2026.
+    pasta_processar_rebate = os.path.join(pasta_conciliacoes, "REBATE")
     os.makedirs(pasta_conciliacoes, exist_ok=True)
     os.makedirs(pasta_cmm, exist_ok=True)
+    os.makedirs(pasta_descricoes, exist_ok=True)
     caminho_xlsx = os.path.join(pasta_conciliacoes, f"conciliacao_{sufixo}.xlsx")
     caminho_rebate_xlsx = os.path.join(pasta_cmm, f"rebate_cmm_{sufixo}.xlsx")
+    caminho_rebate_processar_xlsx = _caminho_rebate_processar(pasta_processar_rebate, data_ref, rebate_processar)
+    if caminho_rebate_processar_xlsx:
+        os.makedirs(pasta_processar_rebate, exist_ok=True)
 
     descricoes_ml = gerar_descricoes_ml(ml_dados)
     caminho_descricoes_xlsx = (
-        os.path.join(pasta_conciliacoes, f"descricoes_ml_{sufixo}.xlsx")
+        os.path.join(pasta_descricoes, f"descricoes_ml_{sufixo}.xlsx")
         if len(descricoes_ml) else None
     )
 
@@ -114,6 +199,9 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
 
         if caminho_descricoes_xlsx:
             descricoes_ml.to_excel(caminho_descricoes_xlsx, index=False)
+
+        if caminho_rebate_processar_xlsx:
+            salvar_rebate_processar(rebate_processar, caminho_rebate_processar_xlsx, data_ref)
     except PermissionError as exc:
         raise PermissionError(
             f"Feche o arquivo no Excel antes de rodar de novo: {exc.filename}"
@@ -123,6 +211,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "resultado": resultado,
         "fila_verificar": fila_verificar,
         "rebate_cmm": rebate_cmm,
+        "rebate_processar": rebate_processar,
         "alvo": alvo,
         "ml_atualizado": ml_dados is not None and not ml_de_cache,
         "ml_de_cache": ml_de_cache,
@@ -135,6 +224,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "caminho_rb": caminho_rb,
         "caminho_xlsx": caminho_xlsx,
         "caminho_rebate_xlsx": caminho_rebate_xlsx,
+        "caminho_rebate_processar_xlsx": caminho_rebate_processar_xlsx,
         "caminho_descricoes_xlsx": caminho_descricoes_xlsx,
         "conferencia_rbx": conferencia_rbx,
     }
@@ -166,5 +256,78 @@ def main():
     print(f"Salvo em: {os.path.abspath(r['caminho_xlsx'])}")
 
 
+def _testar_arquivar_rbx():
+    """_arquivar_rbx nao roda sozinha em processar() -- so quando chamada.
+    Confere caminho de destino (<ano>/<mes>.<ano>/<data>_<raiz>.xlsx) e as
+    formulas E3/F3/G3. Pedido do Everton, 17/09/2026."""
+    import tempfile
+
+    global CAMINHO_ARQUIVO_MARKETPLACE
+
+    with tempfile.TemporaryDirectory() as tmp:
+        caminho_rbx = os.path.join(tmp, "rbx.xlsx")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Dt.Ref: 01/09/2026"])
+        ws.append(["Hora: 10:00:00"])
+        ws.append(["Emissão: 01/09/2026"])
+        ws.append(["BANCO:", "237 - BRADESCO SA", "AGENCIA:", "3708", "CONTA:", "X103925", "SALDO INICIAL:", "0,00"])
+        ws.append(["DATA", "OPERACAO", "DOCUMENTO", "PREFIXO/TITULO", "ENTRADAS", "SAIDAS",
+                    "SALDO ATUAL", "USUARIO", "PED MKP", "Vendedor", "Emissao Titulo", "Saldo Titulo"])
+        ws.append(["01/09/2026", "REC MKP MKP_MELI_FU REF PARC 1", "1", "", 100.0, 0, 0, "", "1", "", "", 0])
+        ws.append(["01/09/2026", "MKP_FULL_REPASSE", "", "", 0, 100.0, 0, "", "", "", "", 0])
+        wb.save(caminho_rbx)
+
+        anterior = CAMINHO_ARQUIVO_MARKETPLACE
+        CAMINHO_ARQUIVO_MARKETPLACE = tmp
+        try:
+            caminho_destino = _arquivar_rbx("FULL", "01.09.2026", "MKP_MELI_FU", caminho_rbx)
+        finally:
+            CAMINHO_ARQUIVO_MARKETPLACE = anterior
+
+        assert caminho_destino == os.path.join(tmp, "2026", "09.2026", "01.09.2026_MKP_MELI_FU.xlsx"), caminho_destino
+        assert os.path.exists(caminho_destino)
+
+        wb2 = openpyxl.load_workbook(caminho_destino)
+        ws2 = wb2.active
+        assert ws2["E3"].value == "=SUBTOTAL(9,E6:E7)", ws2["E3"].value
+        assert ws2["F3"].value == "=SUBTOTAL(9,F6:F7)", ws2["F3"].value
+        assert ws2["G3"].value == "=E3-F3", ws2["G3"].value
+
+
+def _testar_ordenar_fila_verificar():
+    """Exemplo real do Everton: DIF = [1000, 500, -1500, -300] tem que sair
+    1000, 500, -1500, -300 (positivos maior->menor, depois negativos
+    mais-negativo->mais-perto-de-zero) -- lote de lancamento no TOTVS."""
+    resultado = pd.DataFrame({
+        "PEDIDO_MKP": ["a", "b", "c", "d", "e"],
+        "STATUS": ["VERIFICAR", "VERIFICAR", "VERIFICAR", "VERIFICAR", "SEM DIFF"],
+        "DIF": [500.0, 1000.0, -300.0, -1500.0, 999.0],
+    })
+    fila = _ordenar_fila_verificar(resultado)
+    assert list(fila["DIF"]) == [1000.0, 500.0, -1500.0, -300.0], list(fila["DIF"])
+
+
+def _testar_caminho_rebate_processar():
+    """So gera arquivo/pasta quando tem REBATE de verdade pra colocar
+    dentro -- canal != FULL ja chega aqui como rebate_processar=None (ver
+    processar())."""
+    rebate_vazio = pd.DataFrame({"NR PEDIDO MKP": []})
+    rebate_com_linha = pd.DataFrame({"NR PEDIDO MKP": ["1"]})
+
+    pasta = r"C:\saida\Conciliacoes\REBATE"
+    assert _caminho_rebate_processar(pasta, "02/09/2026", None) is None
+    assert _caminho_rebate_processar(pasta, "02/09/2026", rebate_vazio) is None
+    assert _caminho_rebate_processar(pasta, "02/09/2026", rebate_com_linha) == (
+        r"C:\saida\Conciliacoes\REBATE\PROCESSAR_REBATE_02.09.2026.xlsx"
+    )
+
+
 if __name__ == "__main__":
-    main()
+    if "--self-test" in sys.argv:
+        _testar_arquivar_rbx()
+        _testar_ordenar_fila_verificar()
+        _testar_caminho_rebate_processar()
+        print("rodar_conciliacao_rb.py: ok")
+    else:
+        main()
