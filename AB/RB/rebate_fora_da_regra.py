@@ -3,18 +3,22 @@ PROCESSAR_REBATE (ex. marketplace20260915174306.xls -- baixado pelo Everton)
 e monta o CMM dos pedidos que NAO baixaram sozinhos ("Fora da Regra"), pra
 lancar manualmente igual Frete/Tarifa. Pedido do Everton, 16/09/2026.
 
-Apesar da extensao .xls o conteudo e SpreadsheetML/XML -- openpyxl e
-pandas.read_excel nao leem esse formato (erro "cannot be determined"), por
-isso o parse e via xml.etree.ElementTree. Estrutura conferida num arquivo
-real: sheets "1-credito"/"2-debito" (a "3-Banco" so confirma Banco/Agencia/
-Conta, ignorada aqui), linha 1 e so o nome da sheet solta, cabecalho na
-linha 2, dados a partir da linha 3. O numero de colunas varia entre as 2
-sheets, mas em ambas a 1a celula e sempre o pedido (External), a 3a e
-sempre o Valor, e a ULTIMA e sempre a Acao.
+O formato do arquivo NAO e fixo -- confirmado com 2 arquivos reais do
+Everton, mesma estrutura de colunas em formatos diferentes: as vezes e
+SpreadsheetML/XML fingindo ser .xls (openpyxl/pandas.read_excel nao leem,
+erro "cannot be determined" -- so xml.etree.ElementTree le), as vezes e
+um .xlsx OOXML de verdade (openpyxl le direto). ler_fora_da_regra() tenta
+openpyxl primeiro e cai pro parser XML se falhar. Estrutura (igual nos 2
+formatos): sheets "1-credito"/"2-debito" (a "3-Banco" so confirma Banco/
+Agencia/Conta, ignorada aqui), linha 1 e so o nome da sheet solta,
+cabecalho na linha 2, dados a partir da linha 3. O numero de colunas varia
+entre as 2 sheets, mas em ambas a 1a celula e sempre o pedido (External),
+a 3a e sempre o Valor, e a ULTIMA e sempre a Acao.
 """
 
 import xml.etree.ElementTree as ET
 
+import openpyxl
 import pandas as pd
 
 from rebate_cmm import COLUNAS, NATUREZA_REBATE, MOTIVO_REBATE
@@ -39,8 +43,30 @@ HISTORICO_REBATE = "MKP_ME_FULL_" + MOTIVO_REBATE
 
 def ler_fora_da_regra(caminho_xls):
     """[(pedido, valor)] das linhas com Acao == "Fora da Regra" nas sheets
-    de dados. Assume sem ss:Index esparso nas Cell (confirmado no arquivo
-    real) -- se algum export vier com celulas puladas isso desalinha."""
+    de dados. Detecta o formato real do arquivo -- ver docstring do modulo.
+    openpyxl falha rapido (excecao) quando o conteudo nao e OOXML de
+    verdade, entao tenta ele primeiro e cai pro parser XML."""
+    try:
+        wb = openpyxl.load_workbook(caminho_xls, data_only=True)
+    except Exception:
+        return _ler_fora_da_regra_spreadsheetml(caminho_xls)
+
+    saida = []
+    for nome in _SHEETS_DADOS:
+        if nome not in wb.sheetnames:
+            continue
+        for valores in wb[nome].iter_rows(min_row=3, values_only=True):
+            if not valores or valores[0] is None or valores[-1] != _ACAO_FORA_DA_REGRA:
+                continue
+            saida.append((str(valores[0]), float(valores[2])))
+    return saida
+
+
+def _ler_fora_da_regra_spreadsheetml(caminho_xls):
+    """Parser antigo (ElementTree) -- pro caso do arquivo vir como
+    SpreadsheetML/XML fingindo ser .xls. Assume sem ss:Index esparso nas
+    Cell (confirmado no arquivo real) -- se algum export vier com celulas
+    puladas isso desalinha."""
     root = ET.parse(caminho_xls).getroot()
     saida = []
     for ws in root.findall("ss:Worksheet", _NS):
@@ -158,5 +184,43 @@ if __name__ == "__main__":
         assert (df["NATUREZA"] == NATUREZA_REBATE).all()
         assert (df["HISTORICO"] == "MKP_ME_FULL_RECEBIMENTO DE REBATE").all()
         assert df["VENDEDOR"].isna().all()
+
+    # 2o formato real: .xlsx OOXML de verdade (nao SpreadsheetML/XML) --
+    # mesma estrutura de colunas, so o arquivo em si e outro formato.
+    # Pedidos reais "Fora da Regra" do RECUSA_REBATE_040926.xlsx do
+    # Everton (aba credito): 2000017997530922 (60,0) e 2000018049543972
+    # (164,8).
+    with tempfile.TemporaryDirectory() as tmp:
+        caminho_xlsx = os.path.join(tmp, "RECUSA_REBATE_teste.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        ws_credito = wb.create_sheet("1-credito")
+        ws_credito.append(["1-credito"])
+        ws_credito.append(["External", "Tipo", "Valor", "ColD", "Acao"])
+        ws_credito.append(["2000017997530922", "x", 60.0, "y", "Fora da Regra"])
+        ws_credito.append(["2000018049543972", "x", 164.8, "y", "Fora da Regra"])
+        ws_credito.append(["2000018025209720", "x", 119.0, "y", "Realizo a baixa do Titulo"])
+
+        ws_debito = wb.create_sheet("2-debito")
+        ws_debito.append(["2-debito"])
+        ws_debito.append(["External", "Tipo", "Valor", "Acao"])
+        ws_debito.append(["2000017999272824", "x", -15.04, "Realizo a baixa do Titulo"])
+
+        ws_banco = wb.create_sheet("3-Banco")
+        ws_banco.append(["3-Banco"])
+        ws_banco.append(["Banco", "Agencia", "Conta"])
+        ws_banco.append(["237", "3708", "X103925"])
+
+        wb.save(caminho_xlsx)
+
+        fora_xlsx = ler_fora_da_regra(caminho_xlsx)
+        assert len(fora_xlsx) == 2, fora_xlsx
+        assert ("2000017997530922", 60.0) in fora_xlsx
+        assert ("2000018049543972", 164.8) in fora_xlsx
+
+        df_xlsx = gerar_rebate_fora_da_regra_cmm(caminho_xlsx, "AB_ELETROD", "16/09/2026", "Everton")
+        assert len(df_xlsx) == 2
+        assert (df_xlsx["HISTORICO"] == "MKP_ME_FULL_RECEBIMENTO DE REBATE").all()
 
     print("rebate_fora_da_regra.py: ok")
