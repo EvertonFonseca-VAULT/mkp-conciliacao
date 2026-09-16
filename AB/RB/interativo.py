@@ -17,7 +17,7 @@ import subprocess
 import sys
 import webbrowser
 
-from canais import CANAIS, CANAIS_SEM_RAIZ_CONFIRMADA
+from canais import CAMINHO_RB_PADRAO, CANAIS, CANAIS_SEM_RAIZ_CONFIRMADA
 from dashboard import gerar_dashboard
 from rodar_conciliacao_rb import processar
 
@@ -157,6 +157,33 @@ def gerar_bat_arquivar(canal, data, pasta_saida):
     return nome_bat
 
 
+def gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida):
+    """.bat de arrastar-e-soltar: o Everton arrasta o arquivo de resultado
+    do TOTVS (marketplace...xls, nome com timestamp imprevisivel -- nao da
+    pra saber o caminho na hora de gerar o .bat) em cima do .bat e solta;
+    %~1 recebe o caminho largado. Gerado todo dia (nao condicional, ao
+    contrario do gerar_bat_arquivar) -- ver rebate_fora_da_regra.py. Fica
+    na RAIZ (pasta_saida), mesmo padrao dos outros bats. Pedido do
+    Everton, 18/09/2026."""
+    sufixo = f"{canal.lower()}_{data.replace('.', '')}"
+    nome_bat = f"rebate_fora_da_regra_{sufixo}.bat"
+    caminho_bat = os.path.join(pasta_saida, nome_bat)
+    conteudo = (
+        "@echo off\n"
+        'if "%~1"=="" (\n'
+        '  echo Arraste o arquivo de resultado do TOTVS ^(marketplace...xls^) para cima deste .bat e solte.\n'
+        "  pause\n"
+        "  exit /b 1\n"
+        ")\n"
+        f'"{sys.executable}" "{os.path.abspath(__file__)}" '
+        f'--canal {canal} --data {data} --saida-pasta "{pasta_saida}" --rebate-fora-da-regra "%~1"\n'
+        "pause\n"
+    )
+    with open(caminho_bat, "w", encoding="cp1252") as f:
+        f.write(conteudo)
+    return nome_bat
+
+
 def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
@@ -167,6 +194,7 @@ def executar(canal, data, pasta_saida, usar_scraper):
     if not usar_scraper and len(r["fila_verificar"]):
         caminho_bat_scraper = gerar_bat_scraper(canal, data, pasta_saida)
     caminho_bat_atualizar = gerar_bat_atualizar(canal, data, pasta_saida)
+    gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida)
     # So gera o bat de arquivar quando a Transitoria bate com o alvo (pronta
     # pra transferencia) -- NAO arquiva sozinho: o Everton ainda precisa
     # clicar, depois de fazer a transferencia manual de verdade. Pedido do
@@ -231,7 +259,24 @@ def main():
     parser.add_argument("--saida-pasta", default=PASTA_REDE_PADRAO)
     parser.add_argument("--scraper", action="store_true")
     parser.add_argument("--arquivar-rbx", action="store_true")
+    parser.add_argument("--rebate-fora-da-regra")  # caminho do arquivo largado no .bat, nao store_true
     args = parser.parse_args()
+
+    if args.rebate_fora_da_regra:
+        # Reinvocado pelo bat de arrastar-e-soltar (ver
+        # gerar_bat_rebate_fora_da_regra) -- so gera o _cmm.xlsx e sai, nao
+        # roda o resto do pipeline. Pedido do Everton, 18/09/2026.
+        from parser_rb import metadata_rb
+        from rebate_fora_da_regra import gerar_rebate_fora_da_regra_cmm
+
+        canal = args.canal.upper()
+        data_ref, responsavel = metadata_rb(CAMINHO_RB_PADRAO)
+        raiz = CANAIS[canal]["raiz"]
+        df = gerar_rebate_fora_da_regra_cmm(args.rebate_fora_da_regra, raiz, data_ref, responsavel)
+        caminho_saida = args.rebate_fora_da_regra.rsplit(".", 1)[0] + "_cmm.xlsx"
+        df.to_excel(caminho_saida, index=False)
+        print(f"{len(df)} pedido(s) fora da regra -> {caminho_saida}")
+        return
 
     if args.arquivar_rbx:
         # Reinvocado pelo bat de 2 cliques (ver gerar_bat_arquivar) -- so
@@ -285,17 +330,26 @@ def _testar_bats():
         nome_scraper = gerar_bat_scraper("FULL", "01.09", pasta_saida)
         nome_atualizar = gerar_bat_atualizar("FULL", "01.09", pasta_saida)
         nome_arquivar = gerar_bat_arquivar("FULL", "01.09", pasta_saida)
+        nome_fora_da_regra = gerar_bat_rebate_fora_da_regra("FULL", "01.09", pasta_saida)
         assert nome_scraper == "rodar_scraper_full_0109.bat", nome_scraper
         assert nome_atualizar == "atualizar_full_0109.bat", nome_atualizar
         assert nome_arquivar == "arquivar_rbx_full_0109.bat", nome_arquivar
+        assert nome_fora_da_regra == "rebate_fora_da_regra_full_0109.bat", nome_fora_da_regra
         assert os.path.exists(os.path.join(pasta_saida, nome_scraper))
         assert os.path.exists(os.path.join(pasta_saida, nome_atualizar))
         assert os.path.exists(os.path.join(pasta_saida, nome_arquivar))
+        assert os.path.exists(os.path.join(pasta_saida, nome_fora_da_regra))
         # nao pode ter ido pra dentro de nenhuma subpasta
         assert not os.path.exists(os.path.join(pasta_saida, "Conciliacoes", nome_scraper))
         # o bat reinvoca com --arquivar-rbx, sem rodar o resto do pipeline
         conteudo_arquivar = open(os.path.join(pasta_saida, nome_arquivar), encoding="cp1252").read()
         assert "--arquivar-rbx" in conteudo_arquivar, conteudo_arquivar
+        # arrastar-e-soltar: sem arquivo, avisa e sai (exit /b 1) sem travar
+        # no resto do .bat; com arquivo, %~1 vira o caminho pro flag.
+        conteudo_fora_da_regra = open(os.path.join(pasta_saida, nome_fora_da_regra), encoding="cp1252").read()
+        assert 'if "%~1"=="" (' in conteudo_fora_da_regra
+        assert "exit /b 1" in conteudo_fora_da_regra
+        assert '--rebate-fora-da-regra "%~1"' in conteudo_fora_da_regra
     print("interativo.py: ok")
 
 
