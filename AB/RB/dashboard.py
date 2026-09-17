@@ -57,6 +57,24 @@ CONTA_TRANSITORIA = "X103925"
 BANCO_PADRAO = "237"
 AGENCIA_PADRAO = "3708"
 
+# Marcacoes extras selecionaveis na fila VERIFICAR (Mediacao/Cashback/etc) --
+# ao contrario de Frete/Comissao/Rebate (calculadas a partir de colunas
+# especificas do ML/MP), essas marcam o DIF INTEIRO da linha: pro Everton
+# escolher direto no dash o que aquela diferenca e, em vez de lancar tudo a
+# mao no TOTVS depois. Mesma conta/banco/agencia do resto (Transitoria
+# X103925/237/3708, confirmado com o Everton 18/09/2026) -- so troca
+# NATUREZA/MOTIVO conforme a opcao escolhida. HISTORICO segue o mesmo padrao
+# (prefixo_mov + "_" + motivo, calculado no JS -- ver PREFIXO_MOV).
+# Comeca vazia DE PROPOSITO: nenhum codigo de NATUREZA chutado (pedido do
+# Everton, 18/09/2026 -- ainda sem os codigos reais de Mediacao/Cashback
+# confirmados no CMM). O seletor so aparece na tabela quando esse dict tem
+# pelo menos 1 opcao. Preencher assim pra ativar (rotulo -> (natureza, motivo)):
+#   NATUREZAS_EXTRAS = {
+#       "Mediacao": (NNNN, "TEXTO MOTIVO DO CMM"),
+#       "Cashback": (NNNN, "TEXTO MOTIVO DO CMM"),
+#   }
+NATUREZAS_EXTRAS = {}
+
 # Mapa coluna-do-CMM -> expressao JS que preenche ela, na MESMA ordem de
 # rebate_cmm.COLUNAS -- gerado a partir dessa lista (nao duplicado a mao)
 # pra nunca dessincronizar se a ordem real do CMM mudar. Campos fixos por
@@ -193,6 +211,31 @@ def _cel_natureza(valor, texto_detalhe, pedido, motivo, natureza, conta, histori
     return _cel_detalhe(conteudo, texto_detalhe)
 
 
+def _cel_marcacao_extra(dif, pedido, conta, banco, agencia):
+    """<select> pra marcar o DIF INTEIRO da linha VERIFICAR com uma
+    natureza extra (Mediacao/Cashback/etc, ver NATUREZAS_EXTRAS) -- ao
+    contrario de _conteudo_natureza (checkbox por sub-valor calculado,
+    pode ter mais de 1 marcado por pedido), aqui e no maximo 1 escolha por
+    pedido: o valor marcado e sempre o DIF inteiro da linha, entao so faz
+    sentido ele ser UMA coisa (Mediacao OU Cashback OU nenhuma). Celula em
+    branco quando DIF e None/0 (nada pra marcar). So chamada quando
+    NATUREZAS_EXTRAS ja tem pelo menos 1 opcao (ver _linhas_tabela)."""
+    if dif is None or not dif:
+        return "<td></td>"
+    opcoes = "".join(
+        f'<option value="{html.escape(rotulo)}" data-natureza="{natureza}" '
+        f'data-motivo="{html.escape(motivo)}">{html.escape(rotulo)}</option>'
+        for rotulo, (natureza, motivo) in NATUREZAS_EXTRAS.items()
+    )
+    select = (
+        '<select class="sel-natureza-extra" '
+        f'data-pedido="{pedido}" data-conta="{conta}" data-banco="{banco}" '
+        f'data-agencia="{agencia}" data-valor="{_formatar_numero(dif)}">'
+        f'<option value="">--</option>{opcoes}</select>'
+    )
+    return f"<td>{select}</td>"
+
+
 def _repasse_calculado(dif, comissao, custo_envio):
     """Repasse = |DIF| + |Comissao| + |Custo de envio| -- soma dos
     absolutos, nao o absoluto da soma: o Frete sempre vem negativo, entao
@@ -309,6 +352,10 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
         # pedido. Vazio quando o pedido nao tem nenhuma linha no AB do dia
         # (so no RB/RBX). Pedido do Everton, 18/09/2026.
         cel_descricao = f'<td>{html.escape(str(row.get("DESCRICAO") or ""))}</td>'
+        cel_marcacao = (
+            _cel_marcacao_extra(dif, pedido, CONTA_TRANSITORIA, BANCO_PADRAO, AGENCIA_PADRAO)
+            if NATUREZAS_EXTRAS else ""
+        )
 
         saida.append(f"""
             <tr data-pedido="{pedido}">
@@ -319,6 +366,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
               {cel_descricao}
               <td class="num">{_valor_neutro_html(dif)}</td>
+              {cel_marcacao}
               {cel_comissao}
               {cel_desconto}
               {cel_envio}
@@ -590,9 +638,10 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     historico_html = _painel_historico(raiz) if raiz else ""
     conferencia_html = _painel_conferencia_rbx(conferencia_rbx, alvo) if conferencia_rbx else ""
 
+    colspan_verificar = 13 if NATUREZAS_EXTRAS else 12
     tabela_html = (
         _linhas_tabela(fila_verificar, conferencia_rbx, historicos) if verificar_qtd
-        else '<tr><td colspan="12" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
+        else f'<tr><td colspan="{colspan_verificar}" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
     )
 
     botoes = []
@@ -773,6 +822,10 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   }}
   .chk-natureza {{ accent-color: {COR_OK}; cursor: pointer; margin-right: 3px; vertical-align: middle; }}
   .chk-natureza:checked + span {{ opacity: 0.45; }}
+  .sel-natureza-extra {{
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 4px; font-size: 0.72rem; padding: 2px 4px; max-width: 120px;
+  }}
   #painel-natureza {{ flex: 0 0 auto; display: none; flex-direction: row; gap: 14px; max-height: 180px; }}
   .natureza-col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }}
   .natureza-col textarea {{
@@ -821,6 +874,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
             <thead><tr>
               <th class="chk-col"></th><th>RBX</th><th>RB</th><th>Diferença extrato</th>
               <th>Pedido</th><th>Descrição</th><th>DIF</th>
+              {'<th>Marcação</th>' if NATUREZAS_EXTRAS else ''}
               <th>Comissao</th><th>Desc/Bonus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
             </tr></thead>
             <tbody>{tabela_html}</tbody>
@@ -919,6 +973,11 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   // "751" confirmado pro FULL (18/09/2026) -- so o FULL existe
   // configurado hoje, ver rebate_cmm.py/rebate_fora_da_regra.py.
   var VENDEDOR = "751";
+  // Usado pra montar o HISTORICO das marcacoes extras (Mediacao/Cashback/
+  // etc, ver NATUREZAS_EXTRAS): prefixo_mov + "_" + motivo da opcao
+  // escolhida, mesmo padrao do Frete/Comissao/Rebate (calculado em Python
+  // la, calculado aqui em JS porque o motivo so se sabe depois da escolha).
+  var PREFIXO_MOV = {json.dumps(prefixo_mov or "")};
 
   var CHAVE_NATUREZA = CHAVE + "_natureza";
   var marcadosNatureza;
@@ -933,6 +992,21 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
 
   function atualizarNatureza() {{
     var marcados = Array.prototype.slice.call(document.querySelectorAll(".chk-natureza:checked"));
+    // Marcacoes extras (Mediacao/Cashback/etc, ver NATUREZAS_EXTRAS): o
+    // <select> nao e um checkbox, entao monta um objeto com o mesmo
+    // formato (.dataset.*) esperado pelas expressoes de {campos_cmm_js}
+    // (chk.dataset.motivo etc.) -- assim entra na mesma lista sem duplicar
+    // a logica de montar linha do CMM/MOV.
+    document.querySelectorAll(".sel-natureza-extra").forEach(function (sel) {{
+      if (!sel.value) return;
+      var opt = sel.options[sel.selectedIndex];
+      marcados.push({{dataset: {{
+        pedido: sel.dataset.pedido, motivo: opt.dataset.motivo, natureza: opt.dataset.natureza,
+        conta: sel.dataset.conta, banco: sel.dataset.banco, agencia: sel.dataset.agencia,
+        historico: PREFIXO_MOV ? (PREFIXO_MOV + "_" + opt.dataset.motivo) : "",
+        valor: sel.dataset.valor
+      }}}});
+    }});
     var painel = document.getElementById("painel-natureza");
     if (!marcados.length) {{ painel.style.display = "none"; return; }}
     painel.style.display = "flex";
@@ -961,6 +1035,35 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
       atualizarNatureza();
     }});
   }});
+
+  // Persistencia das marcacoes extras (select), mesmo motivo do resto: o
+  // reload do visibilitychange (toda vez que o Everton troca de aba)
+  // perderia a escolha sem isso. Chave por pedido (nao por pedido+motivo
+  // como o Set dos checkboxes) -- so 1 escolha possivel por pedido aqui.
+  var CHAVE_NATUREZA_EXTRA = CHAVE + "_natureza_extra";
+  var marcadosNaturezaExtra;
+  try {{ marcadosNaturezaExtra = JSON.parse(localStorage.getItem(CHAVE_NATUREZA_EXTRA) || "{{}}"); }}
+  catch (e) {{ marcadosNaturezaExtra = {{}}; }}
+
+  function salvarNaturezaExtra() {{
+    try {{ localStorage.setItem(CHAVE_NATUREZA_EXTRA, JSON.stringify(marcadosNaturezaExtra)); }} catch (e) {{}}
+  }}
+
+  document.querySelectorAll(".sel-natureza-extra").forEach(function (sel) {{
+    var salvo = marcadosNaturezaExtra[sel.dataset.pedido];
+    if (salvo) {{
+      for (var i = 0; i < sel.options.length; i++) {{
+        if (sel.options[i].value === salvo) {{ sel.value = salvo; break; }}
+      }}
+    }}
+    sel.addEventListener("change", function () {{
+      if (sel.value) {{ marcadosNaturezaExtra[sel.dataset.pedido] = sel.value; }}
+      else {{ delete marcadosNaturezaExtra[sel.dataset.pedido]; }}
+      salvarNaturezaExtra();
+      atualizarNatureza();
+    }});
+  }});
+
   atualizarNatureza();
 }})();
 
@@ -1249,4 +1352,51 @@ if __name__ == "__main__":
         conteudo4 = open(caminho4, encoding="utf-8").read()
         assert "Conciliacao ES - 01.01" in conteudo4
         assert "Conciliacao FULL" not in conteudo4  # FULL nao fica mais na tela
+
+        # Marcacao extra na fila VERIFICAR (Mediacao/Cashback/etc, ver
+        # NATUREZAS_EXTRAS) -- fica de fora por padrao (dict vazio, sem
+        # codigo de NATUREZA chutado), so testa aqui com codigos FICTICIOS
+        # (9999/8888, nunca usados de verdade), restaurando o dict original
+        # (vazio) no final pra nao vazar pro dashboard real.
+        original_naturezas_extras = NATUREZAS_EXTRAS.copy()
+        NATUREZAS_EXTRAS["Mediacao (teste)"] = (9999, "MOTIVO MEDIACAO TESTE")
+        NATUREZAS_EXTRAS["Cashback (teste)"] = (8888, "MOTIVO CASHBACK TESTE")
+        try:
+            caminho_extra = gerar_dashboard(
+                resultado, fila, rebate_cmm, canal="FULL", data="02.01",
+                data_ref_rb="01/01/2026", caminho_xlsx_completo="a.xlsx",
+                caminho_xlsx_rebate="b.xlsx", pasta_saida=tmp, alvo=None,
+                conferencia_rbx=conferencia_rbx, responsavel="EVERTON",
+            )
+            conteudo_extra = open(caminho_extra, encoding="utf-8").read()
+            assert "<th>Marcação</th>" in conteudo_extra
+            assert 'class="sel-natureza-extra"' in conteudo_extra
+            assert 'data-pedido="3"' in conteudo_extra
+            assert 'data-valor="-921,84"' in conteudo_extra
+            assert ('<option value="Mediacao (teste)" data-natureza="9999" '
+                    'data-motivo="MOTIVO MEDIACAO TESTE">Mediacao (teste)</option>') in conteudo_extra
+            assert ('<option value="Cashback (teste)" data-natureza="8888" '
+                    'data-motivo="MOTIVO CASHBACK TESTE">Cashback (teste)</option>') in conteudo_extra
+            # HISTORICO da marcacao extra e calculado no JS (so se sabe o
+            # motivo depois da escolha) -- confere que PREFIXO_MOV foi
+            # gerado certo pro FULL, igual ja confirmado pro Frete/Rebate.
+            assert 'var PREFIXO_MOV = "MKP_ME_FULL";' in conteudo_extra
+            linha3_extra = conteudo_extra.split('<tr data-pedido="3">')[1].split("</tr>")[0]
+            assert linha3_extra.count("<td") == 13  # 12 de sempre + Marcacao
+            assert 'sel-natureza-extra' in linha3_extra
+            # JS: select entra na mesma lista que os checkboxes (mesmo
+            # formato chk.dataset.*) e persiste em localStorage por pedido.
+            assert 'document.querySelectorAll(".sel-natureza-extra")' in conteudo_extra
+            assert 'var CHAVE_NATUREZA_EXTRA = CHAVE + "_natureza_extra";' in conteudo_extra
+        finally:
+            NATUREZAS_EXTRAS.clear()
+            NATUREZAS_EXTRAS.update(original_naturezas_extras)
+
+        # Sem nenhuma NATUREZAS_EXTRAS configurada (estado real/padrao), a
+        # coluna Marcacao nao aparece -- nao faz sentido mostrar um
+        # seletor sem nenhuma opcao dentro (o JS de wiring continua no HTML,
+        # so nao acha nenhum elemento .sel-natureza-extra pra pegar).
+        assert "<th>Marcação</th>" not in conteudo
+        assert 'class="sel-natureza-extra"' not in conteudo
+
         print("dashboard.py: ok")
