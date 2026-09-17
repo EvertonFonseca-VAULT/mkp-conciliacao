@@ -47,12 +47,18 @@ def _eh_rebate(texto):
 
 
 def _eh_custo_de_envio(texto):
-    """A "Tarifa de cobranca" fica dentro do grupo Envios junto do "Custo de
-    envio" de verdade -- pro calculo do Repasse (dashboard.py) so conta o
-    custo de envio, a cobranca fica de fora (continua contando no total
-    mostrado na coluna Frete, que usa o grupo Envios inteiro). Pedido do
-    Everton, 16/09/2026."""
-    return "custo de envio" in texto.lower()
+    """A "Tarifa de cobranca" (ou "Tarifa de devolucao", mesmo tratamento --
+    pedido devolvido/reembolsado) fica dentro do grupo Envios junto do custo
+    de envio de verdade -- pro calculo do Repasse (dashboard.py) so conta o
+    custo de envio, o resto fica de fora (residuo -- continua contando no
+    total mostrado na coluna Frete, que usa o grupo Envios inteiro). O
+    rotulo do Mercado varia: "Custo de envio" ou "Tarifa do Mercado Envios
+    (por sua conta)", mesmo conceito -- confirmado com pedido real
+    47833718202, 17/09/2026 (rotulo diferente do pedido 2000017834651356
+    usado no self-test mais abaixo, mesmos valores). Pedido do Everton,
+    16-17/09/2026."""
+    texto = texto.lower()
+    return "custo de envio" in texto or "tarifa do mercado envios" in texto
 
 
 def _agrupar(linhas):
@@ -272,5 +278,19 @@ if __name__ == "__main__":
     assert r2["comissao"] == -64.68
     assert r2["rebate"] == 10.0
     assert r2["desconto_bonus"] is None
+
+    # Pedido real 47833718202 (descricoes_ml_full_08092026.xlsx) -- rotulo
+    # "Tarifa do Mercado Envios (por sua conta)" em vez de "Custo de envio",
+    # mesmo conceito. Sem o fix nenhuma sublinha casava, caia no fallback
+    # (custo_envio = grupo Envios inteiro, -132.15) e o residuo (tarifa de
+    # devolucao) sumia -- so 1 checkbox no dashboard em vez de 2.
+    linhas_tarifa_mercado_envios = [
+        ("Envios (R$)", -132.15),
+        ("- Tarifa do Mercado Envios (por sua conta) (R$)", -44.05),
+        ("- Tarifa de devolução (R$)", -88.10),
+    ]
+    r3 = resumir_linhas(linhas_tarifa_mercado_envios)
+    assert r3["custo_envio"] == -44.05, r3["custo_envio"]  # sem o fix, dava -132.15
+    assert round(r3["envio"] - r3["custo_envio"], 2) == -88.10  # residuo = Tarifa de devolucao
 
     print("classificar_ml.py: ok")
