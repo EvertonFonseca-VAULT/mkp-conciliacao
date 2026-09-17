@@ -304,6 +304,11 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
         )
         semaforo = _semaforo(v_rb, v_rbx, diferenca_extrato)
         cel_diferenca = f'<td class="num">{semaforo} {_valor_ml(diferenca_extrato)}</td>'
+        # DESCRICAO (coluna E do AB, ver cruzamento.py) -- pro Everton ver
+        # "mediation"/"refund"/etc na fila sem abrir o AB pra procurar o
+        # pedido. Vazio quando o pedido nao tem nenhuma linha no AB do dia
+        # (so no RB/RBX). Pedido do Everton, 18/09/2026.
+        cel_descricao = f'<td>{html.escape(str(row.get("DESCRICAO") or ""))}</td>'
 
         saida.append(f"""
             <tr data-pedido="{pedido}">
@@ -312,6 +317,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
               {cel_rb}
               {cel_diferenca}
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
+              {cel_descricao}
               <td class="num">{_valor_neutro_html(dif)}</td>
               {cel_comissao}
               {cel_desconto}
@@ -425,12 +431,95 @@ def _painel_conferencia_rbx(conf, alvo):
     )
 
 
+def _tabela_lotes(lotes_status):
+    """Guia 2: status dos lotes do pipeline AB bruto -> Para Processar (ver
+    pipeline.py/conciliacao.db) -- vazio quando o banco ainda nao existe ou
+    nao tem lote desse canal (feature opcional, mesmo padrao de
+    conferencia_rbx=None). Pedido do Everton, 18/09/2026."""
+    if not lotes_status:
+        return '<p class="ink-muted">Nenhum lote registrado (pipeline.py sync).</p>'
+    linhas = "".join(
+        f"<tr><td>{html.escape(lote)}</td><td>{html.escape(status)}</td>"
+        f"<td>{pedidos if pedidos is not None else '-'}</td>"
+        f"<td>{acao_manual if acao_manual is not None else '-'}</td>"
+        f"<td>{html.escape(rodado_em or '-')}</td></tr>"
+        for lote, status, pedidos, acao_manual, rodado_em in lotes_status
+    )
+    return (
+        "<table><thead><tr><th>Lote</th><th>Status</th><th>Pedidos</th>"
+        f"<th>Acao manual</th><th>Rodado em</th></tr></thead><tbody>{linhas}</tbody></table>"
+    )
+
+
+# Colunas de valor de verdade da aba "Para Processar" (ver
+# processar_full.COLUNAS_PARA_PROCESSAR) -- so essas usam _valor_ml
+# (formatacao de moeda). As demais (SOURCE_ID/EXTERNAL_REFERENCE/etc) sao
+# ID/texto: o pandas as carrega como float (NaN em alguma linha forca a
+# coluna inteira pra float64) e _valor_ml formatava esses IDs como dinheiro
+# ("2.000.017,00" em vez de "2000017591558558") -- bug real reportado pelo
+# Everton, 18/09/2026.
+_COLUNAS_VALOR_PARA_PROCESSAR = {
+    "NET_CREDIT_AMOUNT", "NET_DEBIT_AMOUNT", "GROSS_AMOUNT", "MP_FEE_AMOUNT",
+    "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT", "TAXES_AMOUNT", "COUPON_AMOUNT",
+}
+
+
+def _valor_texto(v):
+    """Celula de ID/texto (SOURCE_ID, EXTERNAL_REFERENCE, DATE, etc.) --
+    numero inteiro sem o '.0' que o pandas cola em coluna float com alguma
+    celula vazia (mesmo problema que _limpar_id resolve no cruzamento),
+    sem formatacao de moeda (nao e valor monetario). Vazio quando
+    None/NaN."""
+    if v is None or (isinstance(v, float) and v != v):
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return html.escape(str(int(v)))
+    return html.escape(str(v))
+
+
+def _tabela_para_processar(para_processar):
+    """Guia 2: linhas cruas da aba "Para Processar" do AB do dia (ver
+    processar_full.gerar_para_processar) -- colunas de valor (_AMOUNT)
+    formatadas como moeda (_valor_ml), o resto como ID/texto puro
+    (_valor_texto). Pedido do Everton, 18/09/2026."""
+    if para_processar is None or not len(para_processar):
+        return '<p class="ink-muted">Sem dados do AB (Para Processar) pra esse lote.</p>'
+    colunas = list(para_processar.columns)
+    cabecalho = "".join(f"<th>{html.escape(str(c))}</th>" for c in colunas)
+    linhas = "".join(
+        "<tr>" + "".join(
+            f"<td>{_valor_ml(row[c]) if c in _COLUNAS_VALOR_PARA_PROCESSAR else _valor_texto(row[c])}</td>"
+            for c in colunas
+        ) + "</tr>"
+        for _, row in para_processar.iterrows()
+    )
+    return f"<table><thead><tr>{cabecalho}</tr></thead><tbody>{linhas}</tbody></table>"
+
+
+def _tabela_valores_conta(valores):
+    """Guia 2: 1 linha por pedido com o valor liquido lancado numa conta
+    (RB ou RBX) -- mesmos dados de _cel_valor_conta (valores_rb/valores_rbx
+    de conferir_rbx.py), so que numa tabela dedicada em vez de coluna da
+    fila VERIFICAR. Ordenado do mais negativo pro mais positivo (mesmo
+    criterio de leitura em lote que _ordenar_fila_verificar usa). Pedido do
+    Everton, 18/09/2026."""
+    if not valores:
+        return '<p class="ink-muted">Sem rb.xlsx/rbx.xlsx pra conferir ainda.</p>'
+    linhas = "".join(
+        f'<tr><td style="mso-number-format:\'\\@\'">{_pedido_html(pedido)}</td>'
+        f'<td class="num">{_valor_colorido_html(valor)}</td></tr>'
+        for pedido, valor in sorted(valores.items(), key=lambda kv: kv[1])
+    )
+    return f"<table><thead><tr><th>Pedido</th><th>Valor</th></tr></thead><tbody>{linhas}</tbody></table>"
+
+
 def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_ref_rb,
                      caminho_xlsx_completo, caminho_xlsx_rebate, pasta_saida, alvo=None,
                      ml_atualizado=False, caminho_bat_scraper=None, raiz=None,
                      caminho_xlsx_descricoes=None, conferencia_rbx=None, caminho_bat_atualizar=None,
                      caminho_bat_arquivar=None, ml_de_cache=False, responsavel=None,
-                     rebate_processar=None, caminho_xlsx_rebate_processar=None):
+                     rebate_processar=None, caminho_xlsx_rebate_processar=None,
+                     para_processar=None, lotes_status=None):
     contagem = resultado["STATUS"].value_counts()
     total = len(resultado)
 
@@ -461,9 +550,24 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     ajuste_pendente = fila_verificar["DIF"].sum()
     verificar_total = fila_verificar["DIF"].abs().sum()
 
+    # Rebate (formula) x RBX: bate quando o que ja caiu direto do ML
+    # (chave_cupom_rebate) + o que ja foi lancado a mao no CMM
+    # (prefixo_mov + MOTIVO_REBATE) fecha com o total calculado -- ver
+    # conferir_rbx.conferir. Sem rb.xlsx/rbx.xlsx (conferencia_rbx None),
+    # sem bolinha -- nada pra conferir ainda. Pedido do Everton, 18/09/2026.
+    rotulo_rebate = "Rebate (formula)"
+    sub_rebate = f"{contagem.get('REBATE', 0)} pedido(s)"
+    if conferencia_rbx:
+        cor_rebate = COR_OK if conferencia_rbx["rebate_bate"] else COR_ALERTA
+        rotulo_rebate += f' <span class="ponto" style="background:{cor_rebate}"></span>'
+        sub_rebate += (
+            f" | RBX: {_moeda(conferencia_rbx['liquido_rebate_rbx'])}"
+            f" (cupom {conferencia_rbx['qtd_cupom_rebate']} + CMM {conferencia_rbx['qtd_cmm_rebate']})"
+        )
+
     cards = [
         ("Total de pedidos", f"{total}", None),
-        ("Rebate (formula)", _moeda(rebate_total), f"{contagem.get('REBATE', 0)} pedido(s)"),
+        (rotulo_rebate, _moeda(rebate_total), sub_rebate),
         ("Est. comissao", _moeda(est_com_total), f"{contagem.get('EST COM', 0)} pedido(s)"),
         ("Mediacao", _moeda(mediacao_total), f"{contagem.get('MEDIACAO', 0)} pedido(s)"),
     ]
@@ -488,7 +592,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
 
     tabela_html = (
         _linhas_tabela(fila_verificar, conferencia_rbx, historicos) if verificar_qtd
-        else '<tr><td colspan="11" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
+        else '<tr><td colspan="12" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
     )
 
     botoes = []
@@ -508,6 +612,32 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
             f'Atualizar (RB/RBX/AB): {html.escape(caminho_bat_atualizar)} (uma pasta acima -- da 2 cliques nele)</span>'
         )
     botoes_html = "".join(botoes)
+
+    valores_rbx = (conferencia_rbx or {}).get("valores_rbx") or {}
+    valores_rb = (conferencia_rbx or {}).get("valores_rb") or {}
+    guia2_html = f"""
+      <div class="grid-main">
+        <div class="col">
+          <div class="painel">
+            <h2>Lotes (pipeline AB)</h2>
+            {_tabela_lotes(lotes_status)}
+          </div>
+          <div class="painel tabela-verificar">
+            <h2>RBX ({len(valores_rbx)})</h2>
+            <div class="tabela-scroll">{_tabela_valores_conta(valores_rbx)}</div>
+          </div>
+          <div class="painel tabela-verificar">
+            <h2>RB ({len(valores_rb)})</h2>
+            <div class="tabela-scroll">{_tabela_valores_conta(valores_rb)}</div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="painel tabela-verificar">
+            <h2>AB Para Processar ({len(para_processar) if para_processar is not None else 0})</h2>
+            <div class="tabela-scroll">{_tabela_para_processar(para_processar)}</div>
+          </div>
+        </div>
+      </div>"""
 
     titulo = f"Conciliacao {canal} - {data}"
     chave_local_storage = f"ajustados_{canal.lower()}_{data.replace('.', '')}"
@@ -578,6 +708,14 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   h1 {{ font-size: 1.3rem; margin: 0; }}
   .ref {{ color: var(--ink-secondary); margin: 0; font-size: 0.85rem; }}
   .ink-muted {{ color: var(--ink-muted); }}
+  .abas {{ display: flex; gap: 6px; flex: 0 0 auto; }}
+  .aba-btn {{
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-secondary);
+    border-radius: 8px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer;
+  }}
+  .aba-btn.ativo {{ color: var(--ink); border-color: var(--ink-secondary); }}
+  .guia {{ flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }}
+  .guia[hidden] {{ display: none; }}
   .aviso-topo {{
     flex: 0 0 auto; color: var(--ink-secondary); font-size: 0.78rem;
     display: flex; align-items: center; gap: 6px; padding: 1px 2px;
@@ -654,6 +792,12 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     <div class="botoes">{botoes_html}</div>
   </div>
 
+  <div class="abas">
+    <button class="aba-btn ativo" data-aba="guia-1">Conciliacao</button>
+    <button class="aba-btn" data-aba="guia-2">AB / RBX / RB</button>
+  </div>
+
+  <div class="guia" id="guia-1">
   {alerta_html}
   {avisos_topo_html}
 
@@ -676,7 +820,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
           <table>
             <thead><tr>
               <th class="chk-col"></th><th>RBX</th><th>RB</th><th>Diferença extrato</th>
-              <th>Pedido</th><th>DIF</th>
+              <th>Pedido</th><th>Descrição</th><th>DIF</th>
               <th>Comissao</th><th>Desc/Bonus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
             </tr></thead>
             <tbody>{tabela_html}</tbody>
@@ -698,6 +842,9 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
       <span class="botao" style="cursor:pointer" onclick="copiarNatureza('ta-natureza-mov', this)">Copiar MOV</span>
     </div>
   </div>
+  </div>
+
+  <div class="guia" id="guia-2" hidden>{guia2_html}</div>
 </div>
 <script>
 (function () {{
@@ -722,6 +869,34 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
       salvar();
     }});
   }});
+
+  // Abas (Conciliacao / AB-RBX-RB) -- guia ativa persiste em localStorage
+  // (chave separada de CHAVE). O reload do visibilitychange acontece toda
+  // vez que o Everton volta pra aba (nao so entre dias, ver mais abaixo) --
+  // sem persistir, ele perdia a guia 2 toda vez que saia pra colar algo no
+  // TOTVS e voltava. Pedido do Everton, 18/09/2026.
+  var CHAVE_ABA = CHAVE + "_aba";
+
+  function ativarAba(nomeAba) {{
+    document.querySelectorAll(".aba-btn").forEach(function (b) {{
+      b.classList.toggle("ativo", b.dataset.aba === nomeAba);
+    }});
+    document.querySelectorAll(".guia").forEach(function (g) {{
+      g.hidden = g.id !== nomeAba;
+    }});
+  }}
+
+  document.querySelectorAll(".aba-btn").forEach(function (botao) {{
+    botao.addEventListener("click", function () {{
+      ativarAba(botao.dataset.aba);
+      try {{ localStorage.setItem(CHAVE_ABA, botao.dataset.aba); }} catch (e) {{}}
+    }});
+  }});
+
+  try {{
+    var abaSalva = localStorage.getItem(CHAVE_ABA);
+    if (abaSalva && document.getElementById(abaSalva)) {{ ativarAba(abaSalva); }}
+  }} catch (e) {{}}
 
   // Volta pra essa aba do navegador (depois de rodar o processo de novo,
   // outro canal ou nao) -> recarrega sozinho, sem precisar abrir outro link.
@@ -824,7 +999,7 @@ if __name__ == "__main__":
     # tem que gerar 2 checkboxes na MESMA celula Frete (2209/X103925 pro
     # custo de envio, 2804/X103925 pra tarifa -- SEMPRE Transitoria, mesmo
     # o CMM real mostrando "103925" naquelas linhas, ver CONTA_TRANSITORIA),
-    # sem quebrar a contagem de <td> da linha (11, igual as demais colunas
+    # sem quebrar a contagem de <td> da linha (12, igual as demais colunas
     # da tabela).
     linhas_split = _linhas_tabela(
         pd.DataFrame({
@@ -834,7 +1009,7 @@ if __name__ == "__main__":
         historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO",
                     "comissao": "MKP_ME_FULL_TARIFA DE COBRANCA"},
     )
-    assert linhas_split.count("<td") == 11
+    assert linhas_split.count("<td") == 12
     assert ('data-motivo="DESPESAS DE FRETE ENVIO" data-natureza="2209" '
             'data-conta="X103925"') in linhas_split
     assert 'data-valor="-22,00"' in linhas_split
@@ -854,6 +1029,9 @@ if __name__ == "__main__":
         "PEDIDO_MKP": ["3"], "DIF": [-921.84],
         # ML_ENVIO/ML_REBATE pra testar a marcacao de NATUREZA (Frete/Rebate)
         "ML_ENVIO": [-25.5], "ML_REBATE": [30.0],
+        # DESCRICAO (coluna E do AB, ver cruzamento.py) -- texto real
+        # confirmado no pedido 2000017591518558 (08/09/2026).
+        "DESCRICAO": ["mediation, refund"],
     })
     rebate_cmm = pd.DataFrame({"VALOR R$": [50.0]})
     conferencia_rbx = {
@@ -869,7 +1047,26 @@ if __name__ == "__main__":
         # pedido "3": achado no RB com o valor exato da DIF (debito) -> Diferenca
         # extrato deve fechar em 0. Nao achado no RBX.
         "valores_rb": {"3": -921.84}, "valores_rbx": {},
+        # Rebate (formula) = 50.0 (pedido "2") -- bate com RBX: 50.0 via CMM,
+        # nada via cupom direto do ML.
+        "liquido_cupom_rebate": 0.0, "qtd_cupom_rebate": 0,
+        "liquido_cmm_rebate": 50.0, "qtd_cmm_rebate": 1,
+        "liquido_rebate_rbx": 50.0, "rebate_bate": True,
     }
+    para_processar = pd.DataFrame({
+        # SOURCE_ID/EXTERNAL_REFERENCE como float64 (None em alguma linha
+        # forca a coluna inteira pra float, igual acontece de verdade no AB
+        # real) -- tem que sair como ID puro ("2000017591558558"), nao
+        # formatado como dinheiro ("2.000.017.591.558.558,00"). Bug real
+        # reportado pelo Everton, 18/09/2026.
+        "DATE": ["01/01/2026", "01/01/2026"],
+        "SOURCE_ID": [2000017591558558.0, None],
+        "EXTERNAL_REFERENCE": [2000017591558558.0, 3.0],
+        "NET_CREDIT_AMOUNT": [None, None],
+        "NET_DEBIT_AMOUNT": [-921.84, -10.0],
+        "DESCRIPTION": ["shipping", "tax"],
+    })
+    lotes_status = [("01.01.2026", "rodado", 3, 1, "2026-01-01T10:00:00")]
 
     with tempfile.TemporaryDirectory() as tmp:
         caminho = gerar_dashboard(
@@ -879,6 +1076,7 @@ if __name__ == "__main__":
             conferencia_rbx=conferencia_rbx, responsavel="EVERTON",
             rebate_processar=pd.DataFrame({"NR PEDIDO MKP": ["1"]}),
             caminho_xlsx_rebate_processar="REBATE/c.xlsx",
+            para_processar=para_processar, lotes_status=lotes_status,
         )
         assert os.path.exists(caminho)
         assert os.path.basename(caminho) == "dashboard_0101.html"  # 1 link, sem canal no nome
@@ -892,6 +1090,10 @@ if __name__ == "__main__":
         assert ">RBX<" in conteudo and ">RB<" in conteudo and "Diferença extrato" in conteudo
         assert "min-width: 100%" not in conteudo  # bug de CSS (colunas espalhadas) corrigido
         assert 'REBATE/c.xlsx">Baixar PROCESSAR_REBATE (1)</a>' in conteudo
+        # Card Rebate (formula) x RBX: bate (cmm 50.0 + cupom 0.0 = 50.0,
+        # rebate_bate=True no fixture) -> bolinha verde + sub com o detalhe.
+        assert 'Rebate (formula) <span class="ponto" style="background:#2fbf4f"></span>' in conteudo
+        assert 'RBX: R$ 50,00 (cupom 0 + CMM 1)' in conteudo
         # pedido "3": achado no RB com o valor exato da DIF (debito) -> DIF fica
         # neutro (pastilha cinza), RB fica colorido (texto vermelho, sem
         # pastilha), Diferenca extrato fecha em 0,00 (neutro) com semaforo
@@ -929,6 +1131,30 @@ if __name__ == "__main__":
         assert "onclick=\"copiarNatureza('ta-natureza-cmm', this)\"" in conteudo
         assert 'botao.textContent = "Copiado!";' in conteudo
 
+        # Guia 2 (AB / RBX / RB): abas presentes, guia-2 comeca escondida
+        # (hidden), lotes/AB Para Processar/RB aparecem na tabela certa.
+        assert 'data-aba="guia-1"' in conteudo and 'data-aba="guia-2"' in conteudo
+        assert '<div class="guia" id="guia-2" hidden>' in conteudo
+        guia2 = conteudo.split('id="guia-2"')[1]
+        assert "01.01.2026" in guia2 and ">rodado<" in guia2  # lotes_status
+        assert "EXTERNAL_REFERENCE" in guia2 and ">3<" in guia2  # para_processar cru
+        assert _valor_colorido_html(-921.84) in guia2  # RB: pedido "3" (valores_rb do fixture)
+        assert "Sem rb.xlsx/rbx.xlsx pra conferir ainda." in guia2  # RBX vazio no fixture
+        # SOURCE_ID/EXTERNAL_REFERENCE (float64 por causa do None numa linha)
+        # tem que sair como ID puro, NAO formatado como dinheiro.
+        assert "<td>2000017591558558</td>" in guia2
+        assert "2.000.017.591.558.558" not in guia2  # formatacao de moeda errada
+        assert "2000017591558558,00" not in guia2
+
+        # Guia ativa persiste em localStorage (chave separada de CHAVE) --
+        # sem isso o reload do visibilitychange (toda vez que o Everton
+        # volta pra aba) jogava de volta pra guia 1. Pedido do Everton,
+        # 18/09/2026.
+        assert 'var CHAVE_ABA = CHAVE + "_aba";' in conteudo
+        assert "function ativarAba(nomeAba)" in conteudo
+        assert 'localStorage.setItem(CHAVE_ABA, botao.dataset.aba)' in conteudo
+        assert 'localStorage.getItem(CHAVE_ABA)' in conteudo
+
         # Marcacao de NATUREZA persiste em localStorage (chave separada de
         # CHAVE, pra sobreviver ao reload do visibilitychange ao trocar de
         # aba) -- confere so que o JS foi gerado sem quebrar escape de
@@ -947,8 +1173,9 @@ if __name__ == "__main__":
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
         linha3 = conteudo.split('<tr data-pedido="3">')[1].split("</tr>")[0]
-        assert linha3.count("<td") == 11
+        assert linha3.count("<td") == 12
         assert linha3.count('class="chk-natureza"') == 2  # so Frete + Rebate
+        assert "<td>mediation, refund</td>" in linha3  # coluna Descricao (AB)
 
         # rb_total(140) + rebate_total(50) + ajuste_pendente(-921.84) = -731.84 -> deve bater
         # liquido_transitoria_simulado batendo com o alvo -> "pronto para

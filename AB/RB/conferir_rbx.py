@@ -29,6 +29,7 @@ import os
 from canais import CANAIS
 from ids import limpar_id
 from parser_rb import carregar_rb
+from rebate_cmm import MOTIVO_REBATE
 
 TOLERANCIA = 0.01
 
@@ -67,11 +68,12 @@ def _valores_lancados(df):
     return {k: round(v, 2) for k, v in liquido.items() if k}
 
 
-def conferir(canal, alvo, pasta_auxiliar):
+def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
     """None se nao tiver rb.xlsx/rbx.xlsx em pasta_auxiliar (feature
     manual/opcional -- so roda quando o Everton gerou os 2 arquivos) ou se
     o canal ainda nao tiver chave definida."""
-    chave = CANAIS.get(canal, {}).get("chave_rbx")
+    cfg = CANAIS.get(canal, {})
+    chave = cfg.get("chave_rbx")
     if not chave:
         return None
     caminho_rb = os.path.join(pasta_auxiliar, "rb.xlsx")
@@ -100,6 +102,25 @@ def conferir(canal, alvo, pasta_auxiliar):
     zerada = abs(liquido_transitoria_simulado) < TOLERANCIA
     pronta_para_transferencia = alvo is not None and abs(liquido_transitoria_simulado - alvo) < TOLERANCIA
 
+    # Rebate: 2 formas de cair no RBX -- direto do ML (chave_cupom_rebate,
+    # pedido "deu certo via processar") ou lancado a mao no CMM
+    # (prefixo_mov + MOTIVO_REBATE, pra quem nao deu certo via processar).
+    # Soma dos 2 tem que bater com o Rebate (formula) do card -- semaforo no
+    # dashboard. Pedido do Everton, 18/09/2026.
+    chave_cupom_rebate = cfg.get("chave_cupom_rebate")
+    liquido_cupom_rebate, qtd_cupom_rebate = (
+        _liquido(transitoria, chave_cupom_rebate) if chave_cupom_rebate else (0.0, 0)
+    )
+    prefixo_mov = cfg.get("prefixo_mov")
+    chave_cmm_rebate = f"{prefixo_mov}_{MOTIVO_REBATE}" if prefixo_mov else None
+    liquido_cmm_rebate, qtd_cmm_rebate = (
+        _liquido(transitoria, chave_cmm_rebate) if chave_cmm_rebate else (0.0, 0)
+    )
+    liquido_rebate_rbx = round(liquido_cupom_rebate + liquido_cmm_rebate, 2)
+    rebate_bate = (
+        rebate_total is not None and abs(liquido_rebate_rbx - rebate_total) < TOLERANCIA
+    )
+
     return {
         "chave": chave,
         "liquido_original": liquido_original,
@@ -123,6 +144,12 @@ def conferir(canal, alvo, pasta_auxiliar):
         # 15-16/09/2026.
         "valores_rb": _valores_lancados(original),
         "valores_rbx": _valores_lancados(transitoria),
+        "liquido_cupom_rebate": liquido_cupom_rebate,
+        "qtd_cupom_rebate": qtd_cupom_rebate,
+        "liquido_cmm_rebate": liquido_cmm_rebate,
+        "qtd_cmm_rebate": qtd_cmm_rebate,
+        "liquido_rebate_rbx": liquido_rebate_rbx,
+        "rebate_bate": rebate_bate,
     }
 
 
@@ -165,6 +192,17 @@ if __name__ == "__main__":
         ])
 
         r = conferir("FULL", alvo=100.0, pasta_auxiliar=tmp)
+        # rebate (formula) 10.0 bate com RBX: so a linha CMM (sem cupom
+        # nesse fixture) -- ver bloco isolado mais abaixo pro caso com as
+        # 2 fontes juntas.
+        assert r["liquido_cmm_rebate"] == 10.0, r
+        assert r["qtd_cmm_rebate"] == 1, r
+        assert r["liquido_cupom_rebate"] == 0.0, r
+        assert r["qtd_cupom_rebate"] == 0, r
+        assert r["liquido_rebate_rbx"] == 10.0, r
+        assert r["rebate_bate"] is False  # sem rebate_total, nada pra comparar
+        assert bool(conferir("FULL", alvo=100.0, pasta_auxiliar=tmp, rebate_total=10.0)["rebate_bate"])
+        assert not bool(conferir("FULL", alvo=100.0, pasta_auxiliar=tmp, rebate_total=999.0)["rebate_bate"])
         assert r["liquido_original"] == 100.0, r
         assert bool(r["original_bate"]), r
         assert r["liquido_transitoria"] == -5.0, r
@@ -227,5 +265,24 @@ if __name__ == "__main__":
         assert r3["liquido_transitoria_simulado"] == 0.0, r3
         assert bool(r3["zerada"]), r3  # transferencia ja feita
         assert not bool(r3["pronta_para_transferencia"]), r3  # 0.0 != alvo (100.0)
+
+    # Rebate com as 2 fontes juntas no RBX: cupom direto do ML (chave_cupom_
+    # rebate) + lancamento manual no CMM (prefixo_mov + MOTIVO_REBATE) --
+    # soma tem que bater com o Rebate (formula). Isolado num tmp proprio pra
+    # nao mexer nos numeros de liquido_transitoria ja testados acima ("FU"
+    # tambem casa com "FULL", entao a linha de cupom conta pra la).
+    with tempfile.TemporaryDirectory() as tmp4:
+        _escrever(os.path.join(tmp4, "rb.xlsx"), "103925", [])
+        _escrever(os.path.join(tmp4, "rbx.xlsx"), "X103925", [
+            ("MKP CUPOM MELI FULL REPASSE", 15.0, 0, "", ""),
+            ("MKP_ME_FULL_RECEBIMENTO DE REBATE", 10.0, 0, "", ""),
+        ])
+        r4 = conferir("FULL", alvo=None, pasta_auxiliar=tmp4, rebate_total=25.0)
+        assert r4["liquido_cupom_rebate"] == 15.0, r4
+        assert r4["qtd_cupom_rebate"] == 1, r4
+        assert r4["liquido_cmm_rebate"] == 10.0, r4
+        assert r4["qtd_cmm_rebate"] == 1, r4
+        assert r4["liquido_rebate_rbx"] == 25.0, r4
+        assert bool(r4["rebate_bate"]), r4  # 25.0 == 25.0 -> bate
 
     print("conferir_rbx.py: ok")

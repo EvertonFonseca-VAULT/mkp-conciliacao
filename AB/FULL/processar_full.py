@@ -12,6 +12,8 @@ NÃO cobre ainda:
   - leitura do RB (extrato bancário) e o SUMIFS por PED MKP.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -106,7 +108,11 @@ def cruzar_totvs(df, totvs, coluna_chave=COLUNA_CHAVE_TOTVS):
     return df
 
 
-CAMINHO_SCRAPER_SRI = r"C:\Users\everton.fonseca\Desktop\Projetos\Screaper Mercado"
+# %USERPROFILE%, nao caminho fixo com usuario -- pra rodar na maquina de
+# qualquer colega que tenha a pasta "Screaper Mercado" clonada no mesmo
+# lugar (Desktop\Projetos) na PROPRIA conta Windows. Pedido do Everton,
+# 18/09/2026 (compartilhar o processo de processar com o time).
+CAMINHO_SCRAPER_SRI = os.path.join(os.path.expanduser("~"), "Desktop", "Projetos", "Screaper Mercado")
 
 
 def resolver_pendentes_via_sri(pendentes):

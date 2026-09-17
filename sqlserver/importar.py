@@ -301,6 +301,67 @@ def importar_historico_empilhado(conn, caminho, loja="CENTER"):
     atualizar_valor_ab(conn, "MAGALU", loja)
 
 
+SHEET_CALENDARIO_RE = re.compile(r"^Vis.o_", re.IGNORECASE)
+
+_MERGE_CALENDARIO_BAIXAS = """
+    MERGE calendario_baixas AS destino
+    USING (SELECT ? AS canal_id, ? AS ano, ? AS mes, ? AS data, ? AS valor_ab) AS origem
+    ON destino.canal_id = origem.canal_id AND destino.data = origem.data
+    WHEN MATCHED THEN
+        UPDATE SET valor_ab = origem.valor_ab, atualizado_em = SYSDATETIME()
+    WHEN NOT MATCHED THEN
+        INSERT (canal_id, ano, mes, data, valor_ab)
+        VALUES (origem.canal_id, origem.ano, origem.mes, origem.data, origem.valor_ab);
+"""
+
+
+def _linhas_calendario_ab(df):
+    """Só as colunas que importam pro AB; descarta linha sem canal, loja,
+    data ou AB — dado incompleto (ex.: mês ainda em aberto), não empilha."""
+    if not {"MARKETPLACE", "LOJA", "DATA", "VALOR_AB"} <= set(df.columns):
+        return df.iloc[0:0]
+    return df.dropna(subset=["MARKETPLACE", "LOJA", "DATA", "VALOR_AB"])
+
+
+def importar_calendario_ab(conn, caminho):
+    """Empilha as abas 'Visão_MÊS' do Calendario.xlsx (visão mensal manual de
+    conciliação) em calendario_baixas: só valor_ab (EB/RB e o resto ficam de
+    fora), ano/mes separados de data, pulando linhas onde AB está vazio."""
+    hash_ = hash_arquivo(caminho)
+    if ja_importado(conn, hash_):
+        print(f"  já importado antes, pulando: {caminho}")
+        return
+
+    total = 0
+    for nome in pd.ExcelFile(caminho).sheet_names:
+        if not SHEET_CALENDARIO_RE.match(nome):
+            continue
+        df = _linhas_calendario_ab(pd.read_excel(caminho, sheet_name=nome))
+        if df.empty:
+            continue
+
+        linhas = [
+            (
+                garantir_canal(conn, str(canal).strip().upper(), str(loja).strip().upper()),
+                pd.Timestamp(data).year,
+                pd.Timestamp(data).month,
+                para_data_iso(data),
+                float(ab),
+            )
+            for canal, loja, data, ab in df[["MARKETPLACE", "LOJA", "DATA", "VALOR_AB"]].itertuples(index=False)
+        ]
+        conn.cursor().executemany(_MERGE_CALENDARIO_BAIXAS, linhas)
+        conn.commit()
+        total += len(linhas)
+
+    conn.cursor().execute(
+        "INSERT INTO importacoes_log (canal, arquivo, hash_arquivo, linhas) VALUES (?, ?, ?, ?)",
+        ("CALENDARIO", os.path.basename(caminho), hash_, total),
+    )
+    conn.commit()
+    print(f"  calendario (AB) importado: {caminho} ({total} linhas)")
+
+
 def importar_base_periodica_magalu(conn, caminho):
     """Import incremental de um export bruto periódico do Magalu (a
     'nova base' que seria colada manualmente no fim do empilhado)."""
@@ -352,8 +413,11 @@ if __name__ == "__main__":
         ]
         for caminho in historico:
             try:
-                if "EMPILHADO" in pd.ExcelFile(caminho).sheet_names:
+                sheets = pd.ExcelFile(caminho).sheet_names
+                if "EMPILHADO" in sheets:
                     importar_historico_empilhado(conn, caminho)
+                elif any(SHEET_CALENDARIO_RE.match(n) for n in sheets):
+                    importar_calendario_ab(conn, caminho)
             except Exception as e:
                 print(f"  erro lendo {caminho}: {e}")
 

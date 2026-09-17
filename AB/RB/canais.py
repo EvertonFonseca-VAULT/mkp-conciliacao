@@ -27,6 +27,11 @@ CANAIS = {
         # (rotulos MKP_ME_FULL_DESPESAS DE FRETE ENVIO etc). Pedido do
         # Everton, 17/09/2026.
         "prefixo_mov": "MKP_ME_FULL",
+        # chave_cupom_rebate: operacao no RBX quando o ML repassa o
+        # cupom/rebate direto (pedido "deu certo via processar", sem
+        # precisar de lancamento manual no CMM) -- ver conferir_rbx.py.
+        # Pedido do Everton, 18/09/2026.
+        "chave_cupom_rebate": "MKP CUPOM MELI FULL REPASSE",
     },
 }
 

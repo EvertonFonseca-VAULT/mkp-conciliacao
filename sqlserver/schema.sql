@@ -137,6 +137,33 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_mkp_magalu_external_w
 GO
 
 -- ============================================
+-- CALENDARIO_BAIXAS
+-- Uma linha por canal + data, empilhado a partir das abas "Visão_MÊS" do
+-- Calendario.xlsx (só o valor_ab; EB/RB e o resto ficam de fora). ano/mes
+-- separados de "data" pra filtrar/agrupar por período sem função de data.
+-- canal_id é o Id pra cruzar com canais (canal/loja/vertente).
+-- ============================================
+
+IF OBJECT_ID('dbo.calendario_baixas', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.calendario_baixas (
+        id            INT IDENTITY(1,1) PRIMARY KEY,
+        canal_id      INT NOT NULL REFERENCES dbo.canais(id),
+        ano           INT NOT NULL,
+        mes           INT NOT NULL,
+        data          DATE NOT NULL,
+        valor_ab      DECIMAL(18,2) NOT NULL,
+        atualizado_em DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+        CONSTRAINT uq_calendario_baixas_canal_data UNIQUE (canal_id, data)
+    );
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_calendario_baixas_ano_mes' AND object_id = OBJECT_ID('dbo.calendario_baixas'))
+    CREATE INDEX idx_calendario_baixas_ano_mes ON dbo.calendario_baixas(ano, mes);
+GO
+
+-- ============================================
 -- IMPORTACOES_LOG
 -- Controla quais arquivos já foram importados (por hash de conteúdo),
 -- pra evitar empilhar a mesma base duas vezes.

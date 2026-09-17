@@ -141,6 +141,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
 
     resultado = enriquecer(resultado, raiz, ml_dados)
     fila_verificar = _ordenar_fila_verificar(resultado)
+    rebate_total = resultado.loc[resultado["STATUS"] == "REBATE", "REBATE"].sum()
     rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
     # PROCESSAR_REBATE: 2o layout do rebate, so pro FULL -- ver
     # rebate_processar.py. Nao substitui o Rebate CMM, e um output a mais
@@ -152,7 +153,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     # que o analista salva na mao em AUXILIAR/ -- None se ainda nao gerou
     # os 2 arquivos (feature opcional, nao trava o dia a dia). Ver
     # conferir_rbx.py.
-    conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"))
+    conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"), rebate_total)
 
     # Descricoes irma de Conciliacoes/CMM (mesmo padrao ja usado na pasta do
     # Everton: AUXILIAR/CMM/Conciliacoes soltas na raiz) -- antes o

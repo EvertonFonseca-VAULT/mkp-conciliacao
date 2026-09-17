@@ -194,6 +194,28 @@ def gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida, pasta_destino):
     return nome_bat
 
 
+def _lotes_status(canal):
+    """Le o status dos lotes do pipeline AB bruto -> Para Processar (ver
+    Mkp/AB/pipeline.py, conciliacao.db) pra guia 2 do dashboard -- [] quando
+    o banco ainda nao existe (pipeline.py nunca rodou, feature opcional,
+    mesmo padrao de conferencia_rbx=None). So leitura, nao cria o banco.
+    Pedido do Everton, 18/09/2026."""
+    caminho_db = os.path.join(os.path.dirname(__file__), "..", "conciliacao.db")
+    if not os.path.exists(caminho_db):
+        return []
+    import sqlite3
+
+    con = sqlite3.connect(caminho_db)
+    try:
+        return con.execute(
+            "SELECT lote, status, pedidos, acao_manual, rodado_em FROM lotes "
+            "WHERE canal=? ORDER BY lote",
+            (canal,),
+        ).fetchall()
+    finally:
+        con.close()
+
+
 def executar(canal, data, pasta_saida, usar_scraper):
     print(f"\nProcessando {canal} {data}...")
     r = processar(canal, data, pasta_saida=pasta_saida, usar_scraper=usar_scraper)
@@ -243,6 +265,8 @@ def executar(canal, data, pasta_saida, usar_scraper):
             f"REBATE/{os.path.basename(r['caminho_rebate_processar_xlsx'])}"
             if r["caminho_rebate_processar_xlsx"] else None
         ),
+        para_processar=r["para_processar"],
+        lotes_status=_lotes_status(canal),
     )
 
     print(f"Total de pedidos: {len(r['resultado'])}")

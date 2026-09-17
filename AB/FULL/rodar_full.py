@@ -2,11 +2,17 @@
 Validação -> Pagamento/Frete -> Para Processar) e salva a aba "Para
 Processar" (formato de importação no TOTVS) em Excel.
 
-Uso:
+Uso do dia a dia (via rodar_full.bat, igual o iniciar_conciliacao.bat do
+AB/RB): python rodar_full.py --data DD.MM.AAAA -- resolve sozinho o AB de
+entrada (pasta REDE, ver CAMINHO_AB_PADRAO) e já salva a saída no nome/pasta
+exatos que o AB/RB (resolver_para_processar) espera achar, fechando a ponte
+entre os dois pipelines sem precisar mover arquivo na mao.
+
+Uso manual/depuracao (caminhos explicitos, nao mexe na saida automatica):
     python rodar_full.py "<caminho do AB>" "<caminho do PTI>" [saida.xlsx]
 
-Se os caminhos não forem passados, usa os do lote 01.09.2026 (mesmo usado
-na validação contra PROCESSAR_MERCADO FULL 01.09.xlsx).
+Sem nenhum argumento, usa os caminhos do lote 01.09.2026 (mesmo usado na
+validacao contra PROCESSAR_MERCADO FULL 01.09.xlsx).
 """
 
 import os
@@ -25,6 +31,26 @@ from modelo_ab import montar_validacao, montar_pagamento, montar_frete, montar_p
 
 CAMINHO_AB_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB\FULL\2026\09.2026\MERCADO FULL 03.09.2026.xlsx"
 CAMINHO_PTI_PADRAO = r"C:\TEMP\PTI FULL.csv"
+
+# Mesma pasta/prefixo que canais.py (AB/RB) usa em CANAIS["FULL"] pra achar o
+# "Para Processar" do dia -- salvando aqui com esse nome exato, o AB/RB acha
+# sozinho, sem precisar mover o arquivo na mao. Pedido do Everton, 17/09/2026.
+PASTA_SAIDA_PADRAO = r"C:\RODAR TOTVS\PROCESSAR\FULL"
+PREFIXO_SAIDA_PADRAO = "PROCESSAR_MERCADO FULL"
+
+# Pasta REDE onde o AB bruto do dia fica (Capa!B2 do PB BASE.xlsm, ver Passo a
+# passo - Conciliacao Mercado FULL.md) -- <ANO>/<MM>.<ANO>/MERCADO FULL <data>.xlsx
+PASTA_AB_REDE_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB\FULL"
+
+
+def caminhos_do_dia(data):
+    """`data` = "DD.MM.AAAA". Deriva o caminho do AB bruto (pasta REDE,
+    <ano>/<mes>.<ano>/) e o caminho de saida no padrao que o AB/RB espera
+    (PASTA_SAIDA_PADRAO/PREFIXO_SAIDA_PADRAO <data>.xlsx)."""
+    dia, mes, ano = data.split(".")
+    caminho_ab = os.path.join(PASTA_AB_REDE_PADRAO, ano, f"{mes}.{ano}", f"MERCADO FULL {data}.xlsx")
+    saida = os.path.join(PASTA_SAIDA_PADRAO, f"{PREFIXO_SAIDA_PADRAO} {data}.xlsx")
+    return caminho_ab, CAMINHO_PTI_PADRAO, saida
 
 
 def rodar(caminho_ab, caminho_pti):
@@ -50,10 +76,17 @@ def rodar(caminho_ab, caminho_pti):
 
 
 def main():
-    caminho_ab = sys.argv[1] if len(sys.argv) > 1 else CAMINHO_AB_PADRAO
-    caminho_pti = sys.argv[2] if len(sys.argv) > 2 else CAMINHO_PTI_PADRAO
-    saida = sys.argv[3] if len(sys.argv) > 3 else "resultado_full.xlsx"
+    # --data DD.MM.AAAA (uso do dia a dia, via rodar_full.bat): deriva AB de
+    # entrada e saida sozinho, no padrao que o AB/RB espera. Sem --data, cai
+    # no modo manual de sempre (caminhos explicitos ou default fixo de teste).
+    if len(sys.argv) > 2 and sys.argv[1] == "--data":
+        caminho_ab, caminho_pti, saida = caminhos_do_dia(sys.argv[2])
+    else:
+        caminho_ab = sys.argv[1] if len(sys.argv) > 1 else CAMINHO_AB_PADRAO
+        caminho_pti = sys.argv[2] if len(sys.argv) > 2 else CAMINHO_PTI_PADRAO
+        saida = sys.argv[3] if len(sys.argv) > 3 else "resultado_full.xlsx"
 
+    os.makedirs(os.path.dirname(saida) or ".", exist_ok=True)
     _validacao, _pagamento, _frete, processar = rodar(caminho_ab, caminho_pti)
 
     with pd.ExcelWriter(saida) as writer:
