@@ -802,6 +802,12 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   }}
   .grid-main {{ display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }}
   @media (max-width: 1000px) {{ .grid-main {{ grid-template-columns: 1fr; }} }}
+  /* Modo foco -- esconde cards e paineis laterais (Alvo/Conferencia/
+     Historico), so pra fila VERIFICAR ganhar a largura toda. Pedido do
+     Everton, 18/09/2026. */
+  body.modo-foco .cards {{ display: none; }}
+  body.modo-foco #col-lateral {{ display: none; }}
+  body.modo-foco .grid-main {{ grid-template-columns: 1fr; }}
   .col {{ min-width: 0; display: flex; flex-direction: column; gap: 16px; }}
   .painel {{
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
@@ -868,6 +874,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   <div class="abas">
     <button class="aba-btn ativo" data-aba="guia-1">Conciliacao</button>
     <button class="aba-btn" data-aba="guia-2">AB / RBX / RB</button>
+    <button class="aba-btn" id="btn-foco" type="button" title="Esconde os cards e os paineis laterais, so pra fila VERIFICAR ficar maior">Modo foco</button>
   </div>
 
   <div class="guia" id="guia-1">
@@ -877,7 +884,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   <div class="cards">{cards_html}</div>
 
   <div class="grid-main">
-    <div class="col">
+    <div class="col" id="col-lateral">
       <div class="painel">
         <h2>Alvo do dia</h2>
         {alvo_html}
@@ -952,7 +959,10 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   var CHAVE_ABA = CHAVE + "_aba";
 
   function ativarAba(nomeAba) {{
-    document.querySelectorAll(".aba-btn").forEach(function (b) {{
+    // [data-aba] exclui o botao "Modo foco" (sem data-aba, ver mais
+    // abaixo) -- sem esse filtro ele entraria nesse mesmo clique e
+    // escondia as 2 guias (nenhuma bate com nomeAba=undefined).
+    document.querySelectorAll(".aba-btn[data-aba]").forEach(function (b) {{
       b.classList.toggle("ativo", b.dataset.aba === nomeAba);
     }});
     document.querySelectorAll(".guia").forEach(function (g) {{
@@ -960,7 +970,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     }});
   }}
 
-  document.querySelectorAll(".aba-btn").forEach(function (botao) {{
+  document.querySelectorAll(".aba-btn[data-aba]").forEach(function (botao) {{
     botao.addEventListener("click", function () {{
       ativarAba(botao.dataset.aba);
       try {{ localStorage.setItem(CHAVE_ABA, botao.dataset.aba); }} catch (e) {{}}
@@ -970,6 +980,30 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   try {{
     var abaSalva = localStorage.getItem(CHAVE_ABA);
     if (abaSalva && document.getElementById(abaSalva)) {{ ativarAba(abaSalva); }}
+  }} catch (e) {{}}
+
+  // Modo foco -- esconde cards e paineis laterais (Alvo/Conferencia/
+  // Historico), fila VERIFICAR ganha a largura toda (ver CSS
+  // body.modo-foco). Persiste em localStorage (chave separada de CHAVE)
+  // pelo mesmo motivo do resto: o reload automatico ao voltar pra aba
+  // (visibilitychange, mais abaixo) nao pode resetar. Pedido do Everton,
+  // 18/09/2026.
+  var CHAVE_FOCO = CHAVE + "_foco";
+  var btnFoco = document.getElementById("btn-foco");
+
+  function aplicarFoco(ativo) {{
+    document.body.classList.toggle("modo-foco", ativo);
+    btnFoco.classList.toggle("ativo", ativo);
+  }}
+
+  btnFoco.addEventListener("click", function () {{
+    var novoEstado = !document.body.classList.contains("modo-foco");
+    aplicarFoco(novoEstado);
+    try {{ localStorage.setItem(CHAVE_FOCO, novoEstado ? "1" : "0"); }} catch (e) {{}}
+  }});
+
+  try {{
+    if (localStorage.getItem(CHAVE_FOCO) === "1") {{ aplicarFoco(true); }}
   }} catch (e) {{}}
 
   // Volta pra essa aba do navegador (depois de rodar o processo de novo,
@@ -1280,6 +1314,19 @@ if __name__ == "__main__":
         assert "function ativarAba(nomeAba)" in conteudo
         assert 'localStorage.setItem(CHAVE_ABA, botao.dataset.aba)' in conteudo
         assert 'localStorage.getItem(CHAVE_ABA)' in conteudo
+
+        # Modo foco: botao sem data-aba (pra NAO cair no querySelectorAll
+        # ".aba-btn[data-aba]" da troca de guia -- se caisse, clicar nele
+        # chamaria ativarAba(undefined) e escondia as 2 guias de vez).
+        assert '<button class="aba-btn" id="btn-foco"' in conteudo
+        assert 'id="btn-foco" data-aba' not in conteudo
+        assert 'id="col-lateral"' in conteudo
+        assert 'body.modo-foco .cards' in conteudo
+        assert 'body.modo-foco #col-lateral' in conteudo
+        assert 'body.modo-foco .grid-main' in conteudo
+        assert 'var CHAVE_FOCO = CHAVE + "_foco";' in conteudo
+        assert 'function aplicarFoco(ativo)' in conteudo
+        assert "localStorage.setItem(CHAVE_FOCO, novoEstado ? \"1\" : \"0\")" in conteudo
 
         # Marcacao de NATUREZA persiste em localStorage (chave separada de
         # CHAVE, pra sobreviver ao reload do visibilitychange ao trocar de
