@@ -118,6 +118,19 @@ def _valor_neutro_html(valor):
     return _valor_copiavel_html(_formatar_numero(valor))
 
 
+def _valor_dif_html(valor):
+    """Como _valor_neutro_html (pastilha cinza neutra), mas com o SINAL de
+    negativo em vermelho -- so o "-", o resto do numero continua neutro.
+    Diferente de _valor_colorido_html (numero inteiro colorido, sem
+    pastilha): aqui o Everton so quer um alerta rapido de debito/credito
+    olhando a coluna DIF, sem competir com o resto da paleta nem perder a
+    pastilha copiavel pro Excel. Pedido do Everton, 18/09/2026."""
+    neg = valor < 0
+    texto_abs = _formatar_numero(abs(valor))
+    sinal = f'<span style="color:{COR_ALERTA}">-</span>' if neg else ""
+    return _valor_copiavel_html(f"{sinal}{texto_abs}")
+
+
 def _valor_colorido_html(valor):
     """Texto colorido (vermelho/negativo, verde/positivo), sem pastilha de
     fundo -- unico indicador nas colunas RBX/RB (achou/nao achou ja fica
@@ -365,7 +378,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
               {cel_diferenca}
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
               {cel_descricao}
-              <td class="num">{_valor_neutro_html(dif)}</td>
+              <td class="num">{_valor_dif_html(dif)}</td>
               {cel_marcacao}
               {cel_comissao}
               {cel_desconto}
@@ -1209,7 +1222,10 @@ if __name__ == "__main__":
         # pastilha), Diferenca extrato fecha em 0,00 (neutro) com semaforo
         # verde. Nao achado no RBX -> celula em branco (sem "—").
         assert "R$" not in conteudo.split("<table")[1]  # sem "R$" dentro da tabela
-        assert _valor_neutro_html(-921.84) in conteudo  # DIF: pastilha cinza neutra
+        # DIF negativo: pastilha cinza neutra, mas com o sinal "-" em
+        # vermelho (nao o numero inteiro) -- pedido do Everton, 18/09/2026.
+        assert _valor_dif_html(-921.84) in conteudo
+        assert f'<span style="color:{COR_ALERTA}">-</span>921,84' in conteudo
         assert _valor_colorido_html(-921.84) in conteudo  # RB: texto vermelho, sem pastilha
         assert _valor_neutro_html(0.0) in conteudo  # Diferenca extrato: neutro
         assert f'<span class="ponto" style="background:{COR_OK}"></span>' in conteudo  # semaforo verde
