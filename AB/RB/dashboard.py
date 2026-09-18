@@ -747,91 +747,98 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     --gridline: #33363c; --border: rgba(255,255,255,0.08);
   }}
   * {{ box-sizing: border-box; }}
-  html, body {{ height: 100%; margin: 0; overflow: hidden; }}
+  html {{ font-size: 17px; }}
+  html, body {{ margin: 0; }}
   body {{
     padding: 20px; background: var(--page); color: var(--ink);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   }}
-  .wrap {{ height: calc(100vh - 40px); max-width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }}
-  .header {{ flex: 0 0 auto; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }}
-  h1 {{ font-size: 1.3rem; margin: 0; }}
-  .ref {{ color: var(--ink-secondary); margin: 0; font-size: 0.85rem; }}
+  /* Sem altura travada em 100vh/overflow:hidden -- isso forcava tudo a
+     encolher pra caber numa tela so, ficando "espremido" em monitores/
+     janelas mais baixas (o Everton tinha que dar zoom in/out toda hora
+     pra compensar). Agora a pagina rola normal quando o conteudo nao
+     cabe; so a tabela da fila VERIFICAR/RBX/RB mantem rolagem propria
+     (ver .tabela-scroll), limitada a uma altura razoavel, pra nao virar
+     uma lista infinita dominando a tela. Pedido do Everton, 18/09/2026. */
+  .wrap {{ max-width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }}
+  .header {{ display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }}
+  h1 {{ font-size: 1.5rem; margin: 0; }}
+  .ref {{ color: var(--ink-secondary); margin: 0; font-size: 0.95rem; }}
   .ink-muted {{ color: var(--ink-muted); }}
-  .abas {{ display: flex; gap: 6px; flex: 0 0 auto; }}
+  .abas {{ display: flex; gap: 6px; }}
   .aba-btn {{
     background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-secondary);
-    border-radius: 8px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer;
+    border-radius: 8px; padding: 7px 14px; font-size: 0.92rem; font-weight: 600; cursor: pointer;
   }}
   .aba-btn.ativo {{ color: var(--ink); border-color: var(--ink-secondary); }}
-  .guia {{ flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }}
+  .guia {{ display: flex; flex-direction: column; gap: 16px; }}
   .guia[hidden] {{ display: none; }}
   .aviso-topo {{
-    flex: 0 0 auto; color: var(--ink-secondary); font-size: 0.78rem;
+    color: var(--ink-secondary); font-size: 0.85rem;
     display: flex; align-items: center; gap: 6px; padding: 1px 2px;
   }}
   .aviso-topo .ponto {{ width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
   .alerta {{
-    flex: 0 0 auto; background: #2e1a1a; border: 1px solid #e0524f55; color: #ff9b93;
-    border-radius: 8px; padding: 10px 16px; font-size: 0.9rem;
+    background: #2e1a1a; border: 1px solid #e0524f55; color: #ff9b93;
+    border-radius: 8px; padding: 12px 18px; font-size: 1rem; font-weight: 600;
   }}
   .alerta .icone {{
-    display: inline-flex; width: 18px; height: 18px; border-radius: 50%;
+    display: inline-flex; width: 20px; height: 20px; border-radius: 50%;
     background: #e0524f; color: #14161a; align-items: center; justify-content: center;
-    font-weight: bold; margin-right: 6px; font-size: 0.8rem;
+    font-weight: bold; margin-right: 6px; font-size: 0.85rem;
   }}
-  .grid-main {{ flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 320px 1fr; gap: 14px; }}
-  @media (max-width: 1000px) {{ html, body {{ overflow: auto; }} .wrap {{ height: auto; }} .grid-main {{ grid-template-columns: 1fr; }} }}
-  .col {{ min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; }}
+  .grid-main {{ display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }}
+  @media (max-width: 1000px) {{ .grid-main {{ grid-template-columns: 1fr; }} }}
+  .col {{ min-width: 0; display: flex; flex-direction: column; gap: 16px; }}
   .painel {{
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
-    min-height: 0; min-width: 0; display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+    min-width: 0; display: flex; flex-direction: column;
   }}
-  .painel h2 {{ font-size: 0.85rem; margin: 0 0 10px; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.03em; }}
-  .cards {{ display: flex; flex-direction: row; flex-wrap: nowrap; gap: 12px; flex: 0 0 auto; }}
+  .painel h2 {{ font-size: 0.92rem; margin: 0 0 10px; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; }}
+  .cards {{ display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; }}
   .card {{
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
-    width: auto; min-width: 150px; height: 76px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px;
+    width: auto; min-width: 160px; min-height: 82px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
   }}
-  .card-label {{ font-size: 0.78rem; color: var(--ink-secondary); white-space: nowrap; }}
-  .card-valor {{ font-size: 1.35rem; font-weight: 600; margin-top: 4px; white-space: nowrap; }}
-  .card-sub {{ font-size: 0.7rem; color: var(--ink-muted); margin-top: 2px; white-space: nowrap; }}
+  .card-label {{ font-size: 0.85rem; color: var(--ink-secondary); white-space: nowrap; }}
+  .card-valor {{ font-size: 1.55rem; font-weight: 700; margin-top: 4px; white-space: nowrap; }}
+  .card-sub {{ font-size: 0.78rem; color: var(--ink-muted); margin-top: 2px; white-space: nowrap; }}
   .ponto {{ width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
-  .alvo-linha {{ display: flex; justify-content: space-between; gap: 10px; font-size: 0.82rem; padding: 4px 0; border-bottom: 1px dashed var(--gridline); }}
+  .alvo-linha {{ display: flex; justify-content: space-between; gap: 10px; font-size: 0.9rem; padding: 5px 0; border-bottom: 1px dashed var(--gridline); }}
   .alvo-linha span:first-child {{ flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }}
-  .alvo-linha .num {{ flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; }}
-  .alvo-destaque {{ border-bottom: none; padding-top: 8px; font-weight: 600; font-size: 0.9rem; }}
-  .alvo-status {{ display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-top: 8px; }}
-  table {{ width: max-content; border-collapse: collapse; font-size: 0.8rem; background: #3a3e46; }}
-  tr {{ height: 44px; }}
+  .alvo-linha .num {{ flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }}
+  .alvo-destaque {{ border-bottom: none; padding-top: 8px; font-weight: 700; font-size: 1rem; }}
+  .alvo-status {{ display: flex; align-items: center; gap: 6px; font-size: 0.88rem; margin-top: 8px; }}
+  table {{ width: max-content; border-collapse: collapse; font-size: 0.92rem; background: #3a3e46; }}
+  tr {{ height: 48px; }}
   th, td {{
-    text-align: right; padding: 7px 10px; white-space: nowrap;
+    text-align: right; padding: 8px 12px; white-space: nowrap; font-weight: 500;
     border-bottom: 1px solid var(--gridline); border-right: 1px solid var(--gridline);
   }}
-  th {{ position: sticky; top: 0; background: var(--surface); color: var(--ink-secondary); font-weight: 500; text-align: center; }}
+  th {{ position: sticky; top: 0; background: var(--surface); color: var(--ink-secondary); font-weight: 700; text-align: center; }}
   td.num {{ font-variant-numeric: tabular-nums; }}
   td.tem-detalhe {{ cursor: help; }}
-  td.chk-col, th.chk-col {{ width: 28px; text-align: center; padding: 7px 4px; }}
-  .chk-ajustado {{ width: 15px; height: 15px; accent-color: {COR_OK}; cursor: pointer; }}
+  td.chk-col, th.chk-col {{ width: 30px; text-align: center; padding: 8px 4px; }}
+  .chk-ajustado {{ width: 17px; height: 17px; accent-color: {COR_OK}; cursor: pointer; }}
   tr.linha-feita {{ opacity: 0.45; }}
-  .tabela-verificar {{ flex: 1 1 auto; min-height: 0; }}
-  .tabela-scroll {{ overflow: auto; height: 100%; }}
-  .botoes {{ flex: 0 0 auto; display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }}
+  .tabela-scroll {{ overflow: auto; max-height: 65vh; }}
+  .botoes {{ display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }}
   .botao {{
-    display: inline-block; padding: 8px 14px; border-radius: 8px; text-decoration: none;
-    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 0.85rem;
+    display: inline-block; padding: 9px 16px; border-radius: 8px; text-decoration: none;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 0.92rem; font-weight: 600;
   }}
   .chk-natureza {{ accent-color: {COR_OK}; cursor: pointer; margin-right: 3px; vertical-align: middle; }}
   .chk-natureza:checked + span {{ opacity: 0.45; }}
   .sel-natureza-extra {{
     background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
-    border-radius: 4px; font-size: 0.72rem; padding: 2px 4px; max-width: 120px;
+    border-radius: 4px; font-size: 0.82rem; padding: 3px 5px; max-width: 130px;
   }}
-  #painel-natureza {{ flex: 0 0 auto; display: none; flex-direction: row; gap: 14px; max-height: 180px; }}
+  #painel-natureza {{ display: none; flex-direction: row; gap: 16px; max-height: 220px; }}
   .natureza-col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }}
   .natureza-col textarea {{
-    flex: 1 1 auto; min-height: 70px; resize: vertical; font-family: "Consolas", monospace;
-    font-size: 0.72rem; background: var(--surface-2); color: var(--ink);
-    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+    flex: 1 1 auto; min-height: 80px; resize: vertical; font-family: "Consolas", monospace;
+    font-size: 0.8rem; background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px;
   }}
 </style>
 </head>
