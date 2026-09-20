@@ -1,7 +1,7 @@
 """Koncili (components.koncili.com): acha o repasse de um dia/conta do Mercado
 Livre, le o RESULTADO, baixa o AB original e confere com o calendario.
 
-Conferencia (validada em 19/09/2026, ES/ELETRO/MOVEIS/PRIME): soma de
+Conferencia (validada em 19/09/2026, todos os canais abaixo): soma de
 GROSS + MP_FEE + FINANCING_FEE + SHIPPING_FEE do AB (colunas J:M do export de
 60 colunas) == RESULTADO do Koncili == VALOR_EB do calendario.
 
@@ -42,6 +42,14 @@ CANAIS_KONCILI = {
     "ELETRO": {"conta": "WEBCO ELETRO", "pasta": "ELETRODOMESTICO", "prefixo": "MERCADO ELETRODOMESTICO", "subpasta": "", "loja": "ELETRO"},
     "MOVEIS": {"conta": "WEBCO MÓVEIS", "pasta": "MOVEIS", "prefixo": "MERCADO MOVEIS", "subpasta": "", "loja": "MOVEIS"},
     "PRIME": {"conta": "WEBCOPRIME", "pasta": "PRIME", "prefixo": "MERCADO PRIME", "subpasta": "", "loja": "PRIME"},
+    # Contas descobertas casando RESULTADO x calendario (valor E dia, 11-12 dias
+    # cada, 19/09/2026) -- nao pelo nome. So conferem: o AB do X: desses canais
+    # esta em outro layout (FULL 40 colunas, CENTER/WEB/CO05 35), entao salvar
+    # o export de 60 colunas la misturaria layouts e quebraria o processar.
+    "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "salvar": False},
+    "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "salvar": False},
+    "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "salvar": False},
+    "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05", "salvar": False},
 }
 
 
@@ -141,7 +149,9 @@ def conferir(page, req, hdr, canal, data, salvar=False):
     print(f"  {canal} {data}: repasse {rep['id']} | AB {fmt(ab)} | Koncili {fmt(kon)} {'OK' if ok_kon else 'DIFERE'} | calendario {fmt(cal)} {'' if ok_cal is None else ('OK' if ok_cal else 'DIFERE')}")
 
     if salvar:
-        if ja_existe:
+        if not c.get("salvar", True):
+            print(f"    {canal} so confere: layout do X: e diferente do export do Koncili, nao gravei")
+        elif ja_existe:
             print(f"    ja existe no X:, nao sobrescrevi: {destino}")
         else:
             os.makedirs(os.path.dirname(destino), exist_ok=True)
