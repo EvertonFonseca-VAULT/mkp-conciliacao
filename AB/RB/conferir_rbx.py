@@ -20,11 +20,22 @@ alvo do calendario.
 A "chave" de busca no OPERACAO (substring, case-insensitive) NAO e a raiz
 inteira do canal -- e o pedaco que aparece nos rotulos agregados de fim de
 dia (ex. FULL usa "FU", nao "MKP_MELI_FU"). Vem de CANAIS[canal]["chave_rbx"]
-em canais.py (fonte unica dessa config por canal) -- so confirmado pro FULL
-ate agora, ver comentarios la.
+em canais.py (fonte unica dessa config por canal).
+
+chave_rbx pode ser 1 string OU uma lista/tupla de strings alternativas
+(OR) -- FULL tem sorte de "FU" aparecer em TODOS os tipos de lancamento
+(pedido a pedido "MELI_FU", agregado "MKP_FULL_..."), mas o ES nao: pedido
+a pedido usa "MKP_MELI_ES" (sem "CO"), agregado/manual usa "MKP_MELI_CO_"
+(com "CO", mas sem "ES") -- confirmado pelo Everton, 18/09/2026, com rotulos
+reais (REC MKP MKP_MELI_ES REF PARC 1, MKP_MELI_CO_ES_REPASSE,
+MKP_MELI_CO_RECEBIMENTO DE REBATE etc). O "_" no final de "MKP_MELI_CO_" e
+proposital: sem ele bateria tambem com "MKP_MELI_CO05_..." (canal "Mercado
+Coletas 05", confirmado que lanca nos MESMOS rb.xlsx/rbx.xlsx do ES).
 """
 
 import os
+
+import pandas as pd
 
 from canais import CANAIS
 from ids import limpar_id
@@ -32,6 +43,19 @@ from parser_rb import carregar_rb
 from rebate_cmm import MOTIVO_REBATE
 
 TOLERANCIA = 0.01
+
+
+def _mask_chave(operacao, chave):
+    """OPERACAO contendo QUALQUER UMA das chaves (chave = 1 string ou uma
+    lista/tupla de strings alternativas, ver docstring do modulo) -- usado
+    em vez de um .str.contains() direto em todo lugar que recebe a chave do
+    canal, pra suportar canais como o ES que nao tem 1 raiz curta comum a
+    todos os tipos de lancamento."""
+    chaves = [chave] if isinstance(chave, str) else list(chave)
+    mask = pd.Series(False, index=operacao.index)
+    for c in chaves:
+        mask |= operacao.str.contains(c, case=False, na=False)
+    return mask
 
 # Nao e por canal (ao contrario de chave_rbx) -- cancelamento de RA
 # (Recebimento Antecipado) na transitoria, ex. "CAN-EXCLUSAO DE TITULO RA",
@@ -43,29 +67,122 @@ TOLERANCIA = 0.01
 # do Everton, 17/09/2026.
 CHAVE_RA = "TITULO RA"
 
+# Cancelamento pedido-a-pedido na Original ("CAN-REC MKP <raiz> REF PARC N",
+# confirmado com dado real do FULL 09/09/2026 -- mesmo padrao em outros
+# canais: MERCADO CENTER, MKP_MELI_COL05) -- pedido que ja tinha sido
+# lancado (e ja transferido) num dia anterior e foi cancelado hoje, deixando
+# so o debito residual na Original, sem entrada correspondente na
+# Transitoria do dia (o credito dele ja saiu da Transitoria fazia tempo).
+# Isso "infla" o liquido_transitoria_simulado de hoje em relacao ao alvo, na
+# mesma medida do debito -- por isso o valor de transferencia real e
+# liquido_transitoria_simulado + liquido_cancelado_original (cancelado vem
+# negativo, entao soma = subtrai o excedente). Pedido do Everton,
+# 18/09/2026.
+CHAVE_CANCELAMENTO_ORIGINAL = "CAN-REC"
+
 
 def _liquido(df, chave):
-    mask = df["OPERACAO"].str.contains(chave, case=False, na=False)
+    mask = _mask_chave(df["OPERACAO"], chave)
     linhas = df.loc[mask]
     return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2), len(linhas)
 
 
-def _valores_lancados(df):
+def _liquido_vendedor(df, chave, vendedor):
+    """Como _liquido, mas tambem exige VENDEDOR == vendedor -- usado so pro
+    RA (CHAVE_RA), que ao contrario de chave_rbx nao tem nenhuma chave de
+    OPERACAO que identifique o canal ("CAN-EXCLUSAO DE TITULO RA" e
+    generico). O VENDEDOR e o unico jeito confiavel de saber se aquele RA e
+    do canal certo ou de outro produto/canal. Bug real reportado pelo
+    Everton, 18/09/2026: FULL 09/09/2026 tinha RA de outro canal (vendedor
+    "000423"/vazio, nenhum "751") contando como se fosse do FULL --
+    Transitoria mostrando R$ 130.062,82 em vez de R$ 136.068,20."""
+    mask = (
+        _mask_chave(df["OPERACAO"], chave)
+        & (df["VENDEDOR"].astype(str).str.strip() == vendedor)
+    )
+    linhas = df.loc[mask]
+    return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2), len(linhas)
+
+
+def _cancelados_original(df, chave):
+    """Cancelamentos do canal na Original (CHAVE_CANCELAMENTO_ORIGINAL +
+    chave do canal, ver constante acima) -- liquido, quantidade e a lista
+    pedido/valor (pro dashboard listar cada um). Pedido do Everton,
+    18/09/2026."""
+    mask = (
+        df["OPERACAO"].str.contains(CHAVE_CANCELAMENTO_ORIGINAL, case=False, na=False)
+        & _mask_chave(df["OPERACAO"], chave)
+    )
+    linhas = df.loc[mask]
+    detalhe = [
+        (str(row["PED_MKP"]) if row["PED_MKP"] else str(row["DOCUMENTO"]),
+         round(row["ENTRADAS"] - row["SAIDAS"], 2))
+        for _, row in linhas.iterrows()
+    ]
+    return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2), len(linhas), detalhe
+
+
+def _valores_lancados(df, chave):
     """Valor liquido (ENTRADAS - SAIDAS) lancado por pedido, agrupado pela
     chave PED_MKP quando preenchido, senao DOCUMENTO (limpar_id) -- mesmo
     criterio de antes (_pedidos_lancados), so que agora soma o valor em vez
     de so marcar presenca: lancamento de frete/cobranca feito via MOV (ex.
-    MKP_ME_FULL_TARIFA DE COBRANCA) vem do TOTVS com PED_MKP vazio e o
+    MKP_ME_FULL_TARIFA DE COBRANÇA) vem do TOTVS com PED_MKP vazio e o
     pedido SO no DOCUMENTO (confirmado nos pedidos 2000017834651356,
     2000018022992924, 2000018087525336 do rbx.xlsx do FULL 02.09.2026).
     DOCUMENTO passa por limpar_id igual PED_MKP (celula numerica no Excel
     vira float, senao "123.0" nunca bate com "123"). Usado pro dashboard
     mostrar o valor real lancado em cada conta ao lado da fila VERIFICAR,
     e calcular a Diferenca extrato (DIF - valor RB - valor RBX). Pedido do
-    Everton, 16/09/2026."""
-    chave = df["PED_MKP"].where(df["PED_MKP"] != "", df["DOCUMENTO"].apply(limpar_id))
-    liquido = (df["ENTRADAS"] - df["SAIDAS"]).groupby(chave).sum()
+    Everton, 16/09/2026.
+
+    Filtra por OPERACAO contendo a `chave` do canal ANTES de agrupar --
+    rb.xlsx/rbx.xlsx sao compartilhados entre TODOS os canais do MKP (nao so
+    o FULL), entao sem esse filtro entravam junto milhares de linhas de
+    outros canais/produtos (ex. rotulos "SERVICEFEE"/"AMAZONFEES" de
+    Amazon), inflando a lista muito alem dos pedidos do canal atual -- bug
+    real reportado pelo Everton, 18/09/2026 (guia 2 do dashboard com RBX
+    gigante e RB comparativamente sumido na rolagem)."""
+    df = df[_mask_chave(df["OPERACAO"], chave)]
+    chave_pedido = df["PED_MKP"].where(df["PED_MKP"] != "", df["DOCUMENTO"].apply(limpar_id))
+    liquido = (df["ENTRADAS"] - df["SAIDAS"]).groupby(chave_pedido).sum()
     return {k: round(v, 2) for k, v in liquido.items() if k}
+
+
+def _valores_lancados_por_pedidos(df, pedidos):
+    """Como _valores_lancados, mas filtra por um conjunto de PEDIDO_MKP
+    especificos (isin) em vez de por chave de canal (chave_rbx) -- usado
+    quando o canal ainda nao tem chave_rbx confirmada (ver conferir_pedidos).
+    PED_MKP/DOCUMENTO ja identifica o pedido especifico sozinho: ao contrario
+    dos agregados de fim de dia (que so tem o rotulo em OPERACAO, sem
+    pedido), aqui nao precisa isolar por canal pra achar UM pedido que ja se
+    sabe o numero (os da fila VERIFICAR). Pedido do Everton, 18/09/2026."""
+    pedidos = {str(p).strip() for p in pedidos}
+    chave_pedido = df["PED_MKP"].where(df["PED_MKP"] != "", df["DOCUMENTO"].apply(limpar_id))
+    mask = chave_pedido.isin(pedidos)
+    liquido = (df.loc[mask, "ENTRADAS"] - df.loc[mask, "SAIDAS"]).groupby(chave_pedido[mask]).sum()
+    return {k: round(v, 2) for k, v in liquido.items() if k}
+
+
+def conferir_pedidos(pasta_auxiliar, pedidos):
+    """Comparativo pedido a pedido (valores_rb/valores_rbx), SEM depender do
+    chave_rbx do canal -- serve pra liberar esse comparativo (semaforo +
+    Diferenca extrato na fila VERIFICAR) num canal que ainda nao tem
+    chave_rbx confirmada (ex. ES), sem esperar isso ser confirmado com dado
+    real (a conferencia Original x Transitoria continua bloqueada, essa sim
+    precisa da chave -- ver conferir()). None se rb.xlsx/rbx.xlsx nao
+    existem ainda em pasta_auxiliar (mesmo criterio de conferir()). Pedido
+    do Everton, 18/09/2026."""
+    caminho_rb = os.path.join(pasta_auxiliar, "rb.xlsx")
+    caminho_rbx = os.path.join(pasta_auxiliar, "rbx.xlsx")
+    if not (os.path.exists(caminho_rb) and os.path.exists(caminho_rbx)):
+        return None
+    original = carregar_rb(caminho_rb)
+    transitoria = carregar_rb(caminho_rbx)
+    return {
+        "valores_rb": _valores_lancados_por_pedidos(original, pedidos),
+        "valores_rbx": _valores_lancados_por_pedidos(transitoria, pedidos),
+    }
 
 
 def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
@@ -86,7 +203,14 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
 
     liquido_original, qtd_original = _liquido(original, chave)
     liquido_transitoria, qtd_transitoria = _liquido(transitoria, chave)
-    liquido_ra, qtd_ra = _liquido(transitoria, CHAVE_RA)
+    # RA filtrado por VENDEDOR (ver constante "vendedor" em CANAIS e
+    # docstring de _liquido_vendedor) -- sem vendedor configurado, cai no
+    # comportamento antigo (qualquer RA, sem filtro).
+    vendedor = cfg.get("vendedor")
+    liquido_ra, qtd_ra = (
+        _liquido_vendedor(transitoria, CHAVE_RA, vendedor) if vendedor
+        else _liquido(transitoria, CHAVE_RA)
+    )
     liquido_transitoria_simulado = round(liquido_transitoria + liquido_ra, 2)
     # Correcao de regra, 17/09/2026: a Transitoria NAO zera durante o dia --
     # ela acumula o movimento. Quando o liquido dela (chave do canal + RA)
@@ -100,7 +224,17 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
     # estado CERTO (transferencia ja feita), nao o mesmo "ainda nao bate
     # com o alvo" de quando esta so acumulando no meio do dia.
     zerada = abs(liquido_transitoria_simulado) < TOLERANCIA
-    pronta_para_transferencia = alvo is not None and abs(liquido_transitoria_simulado - alvo) < TOLERANCIA
+
+    # Cancelamento pedido-a-pedido na Original (ver CHAVE_CANCELAMENTO_ORIGINAL)
+    # -- pedido de dia anterior, cancelado hoje, sem entrada correspondente
+    # na Transitoria de hoje. valor_transferencia e o numero real a comparar
+    # com o alvo (liquido_cancelado_original ja vem negativo, entao somar
+    # = descontar o excedente). Pedido do Everton, 18/09/2026.
+    liquido_cancelado_original, qtd_cancelado_original, cancelados_original = (
+        _cancelados_original(original, chave)
+    )
+    valor_transferencia = round(liquido_transitoria_simulado + liquido_cancelado_original, 2)
+    pronta_para_transferencia = alvo is not None and abs(valor_transferencia - alvo) < TOLERANCIA
 
     # Rebate: 2 formas de cair no RBX -- direto do ML (chave_cupom_rebate,
     # pedido "deu certo via processar") ou lancado a mao no CMM
@@ -137,13 +271,21 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
         "qtd_transitoria_simulado": qtd_transitoria + qtd_ra,
         "zerada": zerada,
         "pronta_para_transferencia": pronta_para_transferencia,
+        # Cancelamentos pedido-a-pedido na Original hoje (pedido de dia
+        # anterior cancelado hoje) e o valor de transferencia ja ajustado
+        # por eles -- ver comentario acima de valor_transferencia. Pedido
+        # do Everton, 18/09/2026.
+        "liquido_cancelado_original": liquido_cancelado_original,
+        "qtd_cancelado_original": qtd_cancelado_original,
+        "cancelados_original": cancelados_original,
+        "valor_transferencia": valor_transferencia,
         # Valor liquido ja lancado por pedido em cada conta (PED_MKP ou
         # DOCUMENTO, ver _valores_lancados) -- usado pro dashboard mostrar,
         # pedido a pedido da fila VERIFICAR, quanto ja foi lancado no RB
         # (original) e/ou no RBX (transitoria). Pedido do Everton,
         # 15-16/09/2026.
-        "valores_rb": _valores_lancados(original),
-        "valores_rbx": _valores_lancados(transitoria),
+        "valores_rb": _valores_lancados(original, chave),
+        "valores_rbx": _valores_lancados(transitoria, chave),
         "liquido_cupom_rebate": liquido_cupom_rebate,
         "qtd_cupom_rebate": qtd_cupom_rebate,
         "liquido_cmm_rebate": liquido_cmm_rebate,
@@ -167,8 +309,14 @@ if __name__ == "__main__":
         ws.append(["BANCO:", "237 - BRADESCO SA", "AGENCIA:", "3708", "CONTA:", conta, "SALDO INICIAL:", "0,00"])
         ws.append(["DATA", "OPERACAO", "DOCUMENTO", "PREFIXO/TITULO", "ENTRADAS", "SAIDAS",
                     "SALDO ATUAL", "USUARIO", "PED MKP", "Vendedor", "Emissao Titulo", "Saldo Titulo"])
-        for operacao, entradas, saidas, documento, ped_mkp in linhas:
-            ws.append(["01/09/2026", operacao, documento, "", entradas, saidas, 0, "", ped_mkp, "", "", 0])
+        for linha in linhas:
+            # Vendedor e opcional (6a posicao) -- "" por padrao, so
+            # preenchido quando o teste precisa dele (ver CANAIS["FULL"]
+            # ["vendedor"], usado pro filtro do RA). Pedido do Everton,
+            # 18/09/2026.
+            operacao, entradas, saidas, documento, ped_mkp, *resto = linha
+            vendedor = resto[0] if resto else ""
+            ws.append(["01/09/2026", operacao, documento, "", entradas, saidas, 0, "", ped_mkp, vendedor, "", 0])
         ws.append(["", "NAO CONCILIADOS", "CONCILIADOS", "TOTAL"])
         wb.save(caminho)
 
@@ -188,7 +336,16 @@ if __name__ == "__main__":
             ("MKP_ME_FULL_TARIFA DE COBRANCA", 0, 5.0, "2000017834651356", ""),
             # cancelamento de RA -- nao tem "FU" (chave_rbx do FULL), fica
             # de fora do liquido_transitoria/qtd_transitoria de proposito.
-            ("CAN-EXCLUSAO DE TITULO RA", 0, 7.0, "", ""),
+            # vendedor "751" (FULL, ver CANAIS) -- confirma que RA do
+            # vendedor certo continua contando normalmente.
+            ("CAN-EXCLUSAO DE TITULO RA", 0, 7.0, "", "", "751"),
+            # Lancamento de OUTRO canal (Amazon), com pedido preenchido --
+            # rb.xlsx/rbx.xlsx sao compartilhados entre todos os canais do
+            # MKP. Antes do filtro por chave em _valores_lancados, isso
+            # vazava pro valores_rbx (bug real reportado pelo Everton,
+            # 18/09/2026: guia 2 do dashboard com milhares de linhas de
+            # outros canais).
+            ("CAN-MKP_AMAZO_CE REPASSE", 0, 30.0, "AMZ1", "AMZ1"),
         ])
 
         r = conferir("FULL", alvo=100.0, pasta_auxiliar=tmp)
@@ -217,10 +374,23 @@ if __name__ == "__main__":
         # "1" vem do PED_MKP da linha REC MKP (100-0=100); "2000017834651356"
         # vem do DOCUMENTO da linha MOV, PED_MKP vazio ali (0-5=-5) -- sem a
         # uniao, ficaria de fora (falso negativo no dashboard).
+        # "AMZ1" (linha de outro canal, Amazon) NAO aparece -- confirma o
+        # filtro por chave em _valores_lancados.
         assert r["valores_rbx"] == {"1": 100.0, "2000017834651356": -5.0}, r
+        assert "AMZ1" not in r["valores_rbx"], r
         # cancelamento de RA: fora da chave "FU" do canal, so aparece aqui
         assert r["liquido_ra"] == -7.0, r
         assert r["qtd_ra"] == 1, r
+
+        # Cancelamento pedido-a-pedido na Original (mesma linha CAN-REC ja
+        # usada acima em valores_rb, saida 10.0, pedido "1") -- detectada
+        # tambem como cancelamento e usada pra ajustar o valor de
+        # transferencia (-12.0 + -10.0 = -22.0, ainda mais longe do alvo
+        # 100.0 -- pronta_para_transferencia continua False).
+        assert r["liquido_cancelado_original"] == -10.0, r
+        assert r["qtd_cancelado_original"] == 1, r
+        assert r["cancelados_original"] == [("1", -10.0)], r
+        assert r["valor_transferencia"] == -22.0, r
 
         assert not bool(conferir("FULL", alvo=999.0, pasta_auxiliar=tmp)["original_bate"])
         assert conferir("XPTO", alvo=100.0, pasta_auxiliar=tmp) is None  # canal sem chave
@@ -236,7 +406,7 @@ if __name__ == "__main__":
         ])
         _escrever(os.path.join(tmp2, "rbx.xlsx"), "X103925", [
             ("REC MKP MKP_MELI_FU REF PARC 1", 90.0, 0, "1", "1"),
-            ("CAN-EXCLUSAO DE TITULO RA", 10.0, 0, "", ""),
+            ("CAN-EXCLUSAO DE TITULO RA", 10.0, 0, "", "", "751"),
         ])
         r2 = conferir("FULL", alvo=100.0, pasta_auxiliar=tmp2)
         assert r2["liquido_transitoria"] == 90.0, r2
@@ -257,7 +427,7 @@ if __name__ == "__main__":
         ])
         _escrever(os.path.join(tmp3, "rbx.xlsx"), "X103925", [
             ("REC MKP MKP_MELI_FU REF PARC 1", 0, 10.0, "1", "1"),
-            ("CAN-EXCLUSAO DE TITULO RA", 10.0, 0, "", ""),
+            ("CAN-EXCLUSAO DE TITULO RA", 10.0, 0, "", "", "751"),
         ])
         r3 = conferir("FULL", alvo=100.0, pasta_auxiliar=tmp3)
         assert r3["liquido_transitoria"] == -10.0, r3
@@ -265,6 +435,25 @@ if __name__ == "__main__":
         assert r3["liquido_transitoria_simulado"] == 0.0, r3
         assert bool(r3["zerada"]), r3  # transferencia ja feita
         assert not bool(r3["pronta_para_transferencia"]), r3  # 0.0 != alvo (100.0)
+
+    # Filtro de RA por VENDEDOR (cenario real, FULL 09/09/2026): RA de OUTRO
+    # canal (vendedor "000423"/vazio) fica de fora, RA do FULL (vendedor
+    # "751") continua contando -- Transitoria mostrava R$ 130.062,82 em vez
+    # de R$ 136.068,20 (diferenca 6005.38, exatamente o RA do canal errado).
+    # Pedido do Everton, 18/09/2026.
+    with tempfile.TemporaryDirectory() as tmp_ra_vendedor:
+        _escrever(os.path.join(tmp_ra_vendedor, "rb.xlsx"), "103925", [])
+        _escrever(os.path.join(tmp_ra_vendedor, "rbx.xlsx"), "X103925", [
+            ("REC MKP MKP_MELI_FU REF PARC 1", 130062.82, 0, "1", "1"),
+            # RA de outro canal (vendedor "000423") -- NAO pode contar.
+            ("CAN-EXCLUSAO DE TITULO RA", 0, 6005.38, "", "", "000423"),
+            # RA do FULL de verdade (vendedor "751") -- esse SIM conta.
+            ("CAN-EXCLUSAO DE TITULO RA", 500.0, 0, "", "", "751"),
+        ])
+        r_ra = conferir("FULL", alvo=None, pasta_auxiliar=tmp_ra_vendedor)
+        assert r_ra["liquido_ra"] == 500.0, r_ra  # so a linha do vendedor 751
+        assert r_ra["qtd_ra"] == 1, r_ra
+        assert r_ra["liquido_transitoria_simulado"] == 130562.82, r_ra  # 130062.82 + 500.0
 
     # Rebate com as 2 fontes juntas no RBX: cupom direto do ML (chave_cupom_
     # rebate) + lancamento manual no CMM (prefixo_mov + MOTIVO_REBATE) --
@@ -284,5 +473,74 @@ if __name__ == "__main__":
         assert r4["qtd_cmm_rebate"] == 1, r4
         assert r4["liquido_rebate_rbx"] == 25.0, r4
         assert bool(r4["rebate_bate"]), r4  # 25.0 == 25.0 -> bate
+
+    # Cenario real (FULL 09/09/2026): pedido lancado (e ja transferido) num
+    # dia ANTERIOR, cancelado HOJE -- so o debito residual fica na
+    # Original, sem entrada correspondente na Transitoria de hoje. Isso
+    # "infla" a Transitoria de hoje em relacao ao alvo; o valor de
+    # transferencia real e a Transitoria menos esse cancelado, nao o bruto.
+    # Pedido do Everton, 18/09/2026.
+    with tempfile.TemporaryDirectory() as tmp5:
+        _escrever(os.path.join(tmp5, "rb.xlsx"), "103925", [
+            ("CAN-REC MKP MKP_MELI_FU REF PARC 1", 0, 20.0, "9", "9"),
+        ])
+        _escrever(os.path.join(tmp5, "rbx.xlsx"), "X103925", [
+            ("REC MKP MKP_MELI_FU REF PARC 1", 120.0, 0, "1", "1"),
+        ])
+        r5 = conferir("FULL", alvo=100.0, pasta_auxiliar=tmp5)
+        assert r5["liquido_transitoria_simulado"] == 120.0, r5
+        assert abs(r5["liquido_transitoria_simulado"] - 100.0) >= 0.01  # bruto NAO bate sozinho
+        assert r5["liquido_cancelado_original"] == -20.0, r5
+        assert r5["qtd_cancelado_original"] == 1, r5
+        # ajustado (120.0 + -20.0 = 100.0) bate exato -- pronta_para_transferencia
+        # usa esse valor, nao o bruto.
+        assert r5["valor_transferencia"] == 100.0, r5
+        assert bool(r5["pronta_para_transferencia"]), r5
+
+    # conferir_pedidos: comparativo pedido a pedido sem chave_rbx (canal tipo
+    # ES, ainda sem chave confirmada) -- filtra so pelos pedidos pedidos,
+    # ignorando de proposito outro pedido presente no arquivo (999, de outro
+    # canal/produto) que nao foi solicitado.
+    with tempfile.TemporaryDirectory() as tmp6:
+        _escrever(os.path.join(tmp6, "rb.xlsx"), "103925", [
+            ("QUALQUER ROTULO SEM CHAVE", 0, 10.0, "1", "1"),
+        ])
+        _escrever(os.path.join(tmp6, "rbx.xlsx"), "X103925", [
+            ("OUTRO ROTULO SEM CHAVE", 50.0, 0, "1", "1"),
+            ("LANCAMENTO DE OUTRO CANAL", 999.0, 0, "999", "999"),
+        ])
+        r6 = conferir_pedidos(tmp6, ["1"])
+        assert r6["valores_rb"] == {"1": -10.0}, r6
+        assert r6["valores_rbx"] == {"1": 50.0}, r6
+        assert "999" not in r6["valores_rbx"], r6  # so o pedido pedido, nao "todo mundo"
+        assert conferir_pedidos(tmp6 + "_nada", ["1"]) is None  # sem arquivos
+
+    # chave_rbx composta (lista/tupla, OR) -- cenario real do ES (18/09/2026):
+    # "MKP_MELI_ES" (pedido a pedido) + "MKP_MELI_CO_" (agregado + manual
+    # CMM), com uma linha de OUTRO canal (CO05, mesmos rb.xlsx/rbx.xlsx)
+    # que tem que ficar de fora por causa do "_" no final da 2a chave.
+    with tempfile.TemporaryDirectory() as tmp7:
+        _escrever(os.path.join(tmp7, "rb.xlsx"), "103925", [
+            ("CAN-REC MKP MKP_MELI_ES REF PARC 1", 0, 5.0, "1", "1"),
+        ])
+        _escrever(os.path.join(tmp7, "rbx.xlsx"), "X103925", [
+            ("REC MKP MKP_MELI_ES REF PARC 1", 100.0, 0, "1", "1"),
+            # 2a variante de pedido a pedido, sem "ES" -- confirmada pelo
+            # Everton, 18/09/2026, so bate por causa de "MKP_MELI_CO REF PARC"
+            # (com espaco, nao "_"), senao ficaria de fora igual o CO05.
+            ("REC MKP MKP_MELI_CO REF PARC 2", 20.0, 0, "2", "2"),
+            ("MKP_MELI_CO_ES_REPASSE", 0, 90.0, "", ""),
+            ("MKP_MELI_CO_RECEBIMENTO DE REBATE", 8.0, 0, "", ""),
+            # CO05 (outro canal, mesmos arquivos) -- NAO pode entrar: "CO05"
+            # nao tem "_"/espaco logo apos "CO", entao nao bate com nenhuma
+            # das chaves "MKP_MELI_CO_"/"MKP_MELI_CO REF PARC".
+            ("MKP_MELI_CO05_ES_REPASSE", 0, 500.0, "", ""),
+        ])
+        chave_es = CANAIS["ES"]["chave_rbx"]
+        r7 = conferir("ES", alvo=None, pasta_auxiliar=tmp7)  # chave_rbx real do canais.py
+        assert r7["liquido_transitoria"] == round(100.0 + 20.0 - 90.0 + 8.0, 2), r7  # CO05 de fora
+        assert r7["qtd_transitoria"] == 4, r7  # nao 5 (CO05 excluido)
+        assert r7["liquido_original"] == -5.0, r7
+        assert _mask_chave(pd.Series(["MKP_MELI_CO05_ES_REPASSE"]), chave_es).sum() == 0  # confirma a exclusao
 
     print("conferir_rbx.py: ok")

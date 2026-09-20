@@ -27,7 +27,7 @@ import pandas as pd
 from agregador import agregar_por_pedido
 from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
-from conferir_rbx import conferir as conferir_rbx
+from conferir_rbx import conferir as conferir_rbx, conferir_pedidos
 from cruzamento import cruzar_com_rb
 from descricoes_ml import gerar_descricoes_ml
 from enriquecer import enriquecer
@@ -142,7 +142,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     resultado = enriquecer(resultado, raiz, ml_dados)
     fila_verificar = _ordenar_fila_verificar(resultado)
     rebate_total = resultado.loc[resultado["STATUS"] == "REBATE", "REBATE"].sum()
-    rebate_cmm = gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb)
+    rebate_cmm = gerar_rebate_cmm(canal, resultado, raiz, data_ref, responsavel, rb)
     # PROCESSAR_REBATE: 2o layout do rebate, so pro FULL -- ver
     # rebate_processar.py. Nao substitui o Rebate CMM, e um output a mais
     # (importa direto no processo automatico do TOTVS, pasta
@@ -154,6 +154,14 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     # os 2 arquivos (feature opcional, nao trava o dia a dia). Ver
     # conferir_rbx.py.
     conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"), rebate_total)
+    # Fallback pedido a pedido (sem chave_rbx) pro canal que ainda nao tem
+    # ela confirmada (ex. ES) -- so roda quando conferencia_rbx falhou por
+    # isso (chave ausente), nao quando faltam rb.xlsx/rbx.xlsx (mesmo caso,
+    # ja retorna None igual). Ver conferir_rbx.conferir_pedidos.
+    valores_pedidos = (
+        conferir_pedidos(os.path.join(pasta_saida, "AUXILIAR"), fila_verificar["PEDIDO_MKP"])
+        if conferencia_rbx is None else None
+    )
 
     # Descricoes irma de Conciliacoes/CMM (mesmo padrao ja usado na pasta do
     # Everton: AUXILIAR/CMM/Conciliacoes soltas na raiz) -- antes o
@@ -228,6 +236,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         "caminho_rebate_processar_xlsx": caminho_rebate_processar_xlsx,
         "caminho_descricoes_xlsx": caminho_descricoes_xlsx,
         "conferencia_rbx": conferencia_rbx,
+        "valores_pedidos": valores_pedidos,
     }
 
 

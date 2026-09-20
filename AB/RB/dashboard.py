@@ -48,7 +48,7 @@ TOLERANCIA_ALVO = 0.01
 NATUREZA_FRETE = 2209
 MOTIVO_FRETE = "DESPESAS DE FRETE ENVIO"
 NATUREZA_COMISSAO = 2804
-MOTIVO_COMISSAO = "TARIFA DE COBRANCA"
+MOTIVO_COMISSAO = "TARIFA DE COBRANÇA"
 # Frete/Tarifa/Rebate sao SEMPRE lancados na Transitoria (X103925), mesmo
 # quando o CMM real mostrado ao Everton exibe "103925" na coluna CONTA
 # daquelas linhas -- nao e pra copiar isso literalmente. Correcao do
@@ -274,9 +274,14 @@ def _semaforo(v_rb, v_rbx, diferenca_extrato):
     return f'<span class="ponto" style="background:{cor}"></span>'
 
 
-def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
-    valores_rb = conferencia_rbx["valores_rb"] if conferencia_rbx else None
-    valores_rbx = conferencia_rbx["valores_rbx"] if conferencia_rbx else None
+def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valores_pedidos=None):
+    # valores_pedidos: fallback pedido a pedido sem chave_rbx (ver
+    # conferir_rbx.conferir_pedidos) -- so usado quando conferencia_rbx e
+    # None (canal sem chave_rbx confirmada, ex. ES). Pedido do Everton,
+    # 18/09/2026.
+    fonte_valores = conferencia_rbx or valores_pedidos
+    valores_rb = fonte_valores["valores_rb"] if fonte_valores else None
+    valores_rbx = fonte_valores["valores_rbx"] if fonte_valores else None
     historicos = historicos or {}
     saida = []
     for _, row in fila_verificar.iterrows():
@@ -333,20 +338,39 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
         cel_rbx = _cel_valor_conta(pedido_mkp, valores_rbx)
         cel_rb = _cel_valor_conta(pedido_mkp, valores_rb)
 
-        # Diferenca extrato = DIF - valor RB - valor RBX (soma os 2 quando o
-        # pedido aparece lancado nas duas contas ao mesmo tempo) -- None
-        # quando nao achou em nenhuma das duas, pra nao sugerir uma
+        # Diferenca extrato = DIF - valor RB - valor RBX + TOTAL_RB -- None
+        # quando nao achou em nenhuma das duas contas, pra nao sugerir uma
         # diferenca que na verdade e so a DIF original (o semaforo fica
         # amarelo nesse caso, ver _semaforo). Nao muda o STATUS (continua
         # VERIFICAR), so informa o analista. Pedido do Everton, 16/09/2026.
+        #
+        # + TOTAL_RB confirmado pelo Everton, 18/09/2026: TOTAL_RB (achado
+        # no cruzamento inicial, contra CONCILIADOR_RB.xlsx -- ver
+        # cruzamento.py) e um SUBCONJUNTO do que RB/RBX (AUXILIAR/rb.xlsx e
+        # rbx.xlsx) mostram pra esse pedido -- a mesma transacao que gerou
+        # o DIF continua aparecendo em RB/RBX, entao subtrair RB/RBX
+        # sozinho descontava essa parte 2x. Somar TOTAL_RB de volta cancela
+        # so a parte duplicada, sobrando so o que e realmente NOVO em
+        # RB/RBX (lancamento feito depois, cancelamento+reemissao, etc.).
+        # Ex. real (10/09/2026): DIF=371.65, TOTAL_RB=1911.43, RBX=2283.08
+        # (cancelou o lancamento antigo de 1911.43 e reemitiu um agregado de
+        # 2283.08) -> 371.65 - 2283.08 + 1911.43 = 0 (fechou, verde).
+        # TOTAL_RB=0 (pedido nao achado no cruzamento inicial) reduz pra
+        # formula de sempre (DIF - RB - RBX), sem precisar de caso especial.
         v_rb = (valores_rb or {}).get(pedido_mkp)
         v_rbx = (valores_rbx or {}).get(pedido_mkp)
         diferenca_extrato = (
-            round(dif - (v_rb or 0) - (v_rbx or 0), 2)
+            round(dif - (v_rb or 0) - (v_rbx or 0) + row.get("TOTAL_RB", 0), 2)
             if v_rb is not None or v_rbx is not None else None
         )
         semaforo = _semaforo(v_rb, v_rbx, diferenca_extrato)
         cel_diferenca = f'<td class="num">{semaforo} {_valor_ml(diferenca_extrato)}</td>'
+        # AB total (TOTAL_PED = REPASSE+COMISSAO+FRETE, ver cruzamento.py)
+        # -- do lado de RBX/RB/Diferenca extrato, pro Everton comparar
+        # direto o que o banco tem (RBX/RB) com o que o AB/ML diz que
+        # deveria ter, sem abrir outra planilha. Pedido do Everton,
+        # 18/09/2026.
+        cel_ab_total = f'<td class="num">{_valor_neutro_html(row.get("TOTAL_PED", 0))}</td>'
         # DESCRICAO (coluna E do AB, ver cruzamento.py) -- pro Everton ver
         # "mediation"/"refund"/etc na fila sem abrir o AB pra procurar o
         # pedido. Vazio quando o pedido nao tem nenhuma linha no AB do dia
@@ -363,6 +387,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
               {cel_rbx}
               {cel_rb}
               {cel_diferenca}
+              {cel_ab_total}
               <td style="mso-number-format:'\\@'">{_pedido_html(row['PEDIDO_MKP'])}</td>
               {cel_descricao}
               <td class="num">{_valor_neutro_html(dif)}</td>
@@ -376,17 +401,33 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None):
     return "".join(saida)
 
 
-def _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente):
+def _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx=None):
     calculado = rb_total + rebate_total + ajuste_pendente
 
-    linhas_html = "".join(
-        f'<div class="alvo-linha"><span>{label}</span><span class="num">{_moeda(v)}</span></div>'
-        for label, v in [
-            ("RB atual", rb_total),
-            ("+ Rebate (cupom)", rebate_total),
-            ("+ Ajuste pendente (fila VERIFICAR)", ajuste_pendente),
-            ("= Calculado", calculado),
-        ]
+    # Rebate (formula) x RBX: bate quando o que ja caiu direto do ML
+    # (chave_cupom_rebate) + o que ja foi lancado a mao no CMM
+    # (prefixo_mov + MOTIVO_REBATE) fecha com o total calculado -- ver
+    # conferir_rbx.conferir. Sem rb.xlsx/rbx.xlsx (conferencia_rbx None),
+    # sem bolinha -- nada pra conferir ainda. Dobrado pra dentro desse
+    # painel (18/09/2026, pedido do Everton) -- antes era um card solto no
+    # topo, competindo por espaco sem servir pra nada nesse formato.
+    rotulo_rebate = "+ Rebate (cupom)"
+    sub_rebate_html = ""
+    if conferencia_rbx:
+        cor_rebate = COR_OK if conferencia_rbx["rebate_bate"] else COR_ALERTA
+        rotulo_rebate += f' <span class="ponto" style="background:{cor_rebate}"></span>'
+        sub_rebate_html = (
+            '<div class="alvo-linha"><span class="ink-muted">RBX (cupom + CMM)</span>'
+            f'<span class="num ink-muted">{_moeda(conferencia_rbx["liquido_rebate_rbx"])} '
+            f'(cupom {conferencia_rbx["qtd_cupom_rebate"]} + CMM {conferencia_rbx["qtd_cmm_rebate"]})</span></div>'
+        )
+
+    linhas_html = (
+        f'<div class="alvo-linha"><span>RB atual</span><span class="num">{_moeda(rb_total)}</span></div>'
+        f'<div class="alvo-linha"><span>{rotulo_rebate}</span><span class="num">{_moeda(rebate_total)}</span></div>'
+        + sub_rebate_html
+        + f'<div class="alvo-linha"><span>+ Ajuste pendente (fila VERIFICAR)</span><span class="num">{_moeda(ajuste_pendente)}</span></div>'
+        f'<div class="alvo-linha"><span>= Calculado</span><span class="num">{_moeda(calculado)}</span></div>'
     )
 
     if alvo is None:
@@ -440,6 +481,24 @@ def _painel_conferencia_rbx(conf, alvo):
             f'({qtd} lancamento(s))</div>'
         )
 
+    # Cancelamento pedido-a-pedido na Original hoje (pedido lancado -- e ja
+    # transferido -- num dia ANTERIOR, cancelado hoje: so o debito residual
+    # fica na Original, sem entrada correspondente na Transitoria de hoje,
+    # o que "infla" a Transitoria em relacao ao alvo). Lista cada pedido +
+    # o total, so quando existe algum. Pedido do Everton, 18/09/2026.
+    cancelado_html = ""
+    if conf["qtd_cancelado_original"]:
+        linhas_cancelado = "".join(
+            f'<div class="alvo-linha"><span>Cancelado {html.escape(pedido)}</span>'
+            f'<span class="num">{_moeda(valor)}</span></div>'
+            for pedido, valor in conf["cancelados_original"]
+        )
+        cancelado_html = (
+            '<div class="alvo-linha alvo-destaque"><span>Cancelado na Original hoje</span>'
+            f'<span class="num">{_moeda(conf["liquido_cancelado_original"])}</span></div>'
+            + linhas_cancelado
+        )
+
     rotulo_transitoria = "Transitoria (alvo do calendario)"
     qtd_transitoria_total = conf["qtd_transitoria_simulado"]
     if qtd_transitoria_total == 0:
@@ -452,6 +511,14 @@ def _painel_conferencia_rbx(conf, alvo):
             f'<div class="alvo-linha alvo-destaque"><span>{rotulo_transitoria}</span>'
             f'<span class="num">{_moeda(conf["liquido_transitoria_simulado"])}</span></div>'
         )
+        # So aparece quando ha cancelamento na Original -- a decisao de
+        # "pronto pra transferir" logo abaixo ja usa esse valor ajustado
+        # (valor_transferencia), nao o bruto (ver conferir_rbx.conferir).
+        if conf["qtd_cancelado_original"]:
+            valor_linha += (
+                '<div class="alvo-linha"><span>= Valor de transferencia (ajustado)</span>'
+                f'<span class="num">{_moeda(conf["valor_transferencia"])}</span></div>'
+            )
         if conf["zerada"]:
             status_linha = (
                 f'<div class="alvo-status" style="color:{COR_OK}">'
@@ -465,7 +532,7 @@ def _painel_conferencia_rbx(conf, alvo):
                 f'pronto para fazer a transferencia</div>'
             )
         elif alvo is not None:
-            faltam = _moeda(alvo - conf["liquido_transitoria_simulado"])
+            faltam = _moeda(alvo - conf["valor_transferencia"])
             status_linha = f'<div class="alvo-status ink-muted">acumulando (faltam {faltam} pro alvo)</div>'
         else:
             status_linha = '<div class="alvo-status ink-muted">sem alvo do calendario pra comparar</div>'
@@ -475,6 +542,7 @@ def _painel_conferencia_rbx(conf, alvo):
         _linha("Original (calendario)", conf["liquido_original"], conf["qtd_original"],
                conf["original_bate"], "sem lancamento de fechamento ainda",
                "bate com o calendario", "NAO bate com o calendario")
+        + cancelado_html
         + transitoria_html
     )
 
@@ -567,10 +635,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
                      caminho_xlsx_descricoes=None, conferencia_rbx=None, caminho_bat_atualizar=None,
                      caminho_bat_arquivar=None, ml_de_cache=False, responsavel=None,
                      rebate_processar=None, caminho_xlsx_rebate_processar=None,
-                     para_processar=None, lotes_status=None):
-    contagem = resultado["STATUS"].value_counts()
-    total = len(resultado)
-
+                     para_processar=None, lotes_status=None, valores_pedidos=None):
     # NATUREZA (Frete/Rebate marcados na fila VERIFICAR) -- HISTORICO/LOJA
     # derivados de CANAIS[canal] direto (nao do parametro `raiz`, que fica
     # None pros canais em CANAIS_SEM_RAIZ_CONFIRMADA -- essa marcacao nao
@@ -580,7 +645,8 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     # CMM/MOV). Confirmado com o Everton, 18/09/2026.
     cfg_canal = CANAIS.get(canal, {})
     prefixo_mov = cfg_canal.get("prefixo_mov")
-    loja = cfg_canal.get("loja_calendario", "")
+    loja = cfg_canal.get("loja_cmm", "")  # nao loja_calendario ("COLETAS ES" no ES; o CMM usa "CO")
+    vendedor = cfg_canal.get("vendedor", "")  # FULL "751", ES "763" (confirmado, 19/09/2026)
     historicos = (
         {
             "frete": f"{prefixo_mov}_{MOTIVO_FRETE}",
@@ -592,55 +658,26 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     campos_cmm_js = ", ".join(_CAMPOS_CMM_JS[c] for c in COLUNAS_CMM)
 
     rebate_total = resultado.loc[resultado["STATUS"] == "REBATE", "REBATE"].sum()
-    est_com_total = resultado.loc[resultado["STATUS"] == "EST COM", "DIF"].sum()
-    mediacao_total = resultado.loc[resultado["STATUS"] == "MEDIACAO", "DIF"].sum()
     rb_total = resultado["TOTAL_RB"].sum()
     ajuste_pendente = fila_verificar["DIF"].sum()
-    verificar_total = fila_verificar["DIF"].abs().sum()
-
-    # Rebate (formula) x RBX: bate quando o que ja caiu direto do ML
-    # (chave_cupom_rebate) + o que ja foi lancado a mao no CMM
-    # (prefixo_mov + MOTIVO_REBATE) fecha com o total calculado -- ver
-    # conferir_rbx.conferir. Sem rb.xlsx/rbx.xlsx (conferencia_rbx None),
-    # sem bolinha -- nada pra conferir ainda. Pedido do Everton, 18/09/2026.
-    rotulo_rebate = "Rebate (formula)"
-    sub_rebate = f"{contagem.get('REBATE', 0)} pedido(s)"
-    if conferencia_rbx:
-        cor_rebate = COR_OK if conferencia_rbx["rebate_bate"] else COR_ALERTA
-        rotulo_rebate += f' <span class="ponto" style="background:{cor_rebate}"></span>'
-        sub_rebate += (
-            f" | RBX: {_moeda(conferencia_rbx['liquido_rebate_rbx'])}"
-            f" (cupom {conferencia_rbx['qtd_cupom_rebate']} + CMM {conferencia_rbx['qtd_cmm_rebate']})"
-        )
-
-    cards = [
-        ("Total de pedidos", f"{total}", None),
-        (rotulo_rebate, _moeda(rebate_total), sub_rebate),
-        ("Est. comissao", _moeda(est_com_total), f"{contagem.get('EST COM', 0)} pedido(s)"),
-        ("Mediacao", _moeda(mediacao_total), f"{contagem.get('MEDIACAO', 0)} pedido(s)"),
-    ]
-    cards_html = "".join(
-        f'<div class="card"><div class="card-label">{l}</div><div class="card-valor">{v}</div>'
-        + (f'<div class="card-sub">{s}</div>' if s else "") + "</div>"
-        for l, v, s in cards
-    )
 
     verificar_qtd = len(fila_verificar)
-    alerta_html = ""
-    if verificar_qtd:
-        alerta_html = (
-            f'<div class="alerta"><span class="icone">!</span> '
-            f'<strong>{verificar_qtd} pedido(s) em VERIFICAR</strong> -- '
-            f'R$ em jogo: {_moeda(verificar_total)}. Precisam de conferencia manual.</div>'
-        )
 
-    alvo_html = _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente)
+    # Card "Rebate (formula)" removido (18/09/2026, pedido do Everton) --
+    # dobrado pra dentro do painel Alvo do dia (ver _painel_alvo), perto da
+    # linha "+ Rebate (cupom)", em vez de ficar sozinho no topo competindo
+    # por espaco. Total de pedidos/Est. comissao/Mediacao ja tinham sido
+    # removidos antes, e o alerta "X pedidos em VERIFICAR" tambem
+    # (redundante com a propria fila logo abaixo) -- espaco horizontal
+    # sobra pros paineis Alvo/Original-Transitoria/Historico, que sobem
+    # pro topo (ver .linha-topo).
+    alvo_html = _painel_alvo(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx)
     historico_html = _painel_historico(raiz) if raiz else ""
     conferencia_html = _painel_conferencia_rbx(conferencia_rbx, alvo) if conferencia_rbx else ""
 
-    colspan_verificar = 13 if NATUREZAS_EXTRAS else 12
+    colspan_verificar = 14 if NATUREZAS_EXTRAS else 13
     tabela_html = (
-        _linhas_tabela(fila_verificar, conferencia_rbx, historicos) if verificar_qtd
+        _linhas_tabela(fila_verificar, conferencia_rbx, historicos, valores_pedidos) if verificar_qtd
         else f'<tr><td colspan="{colspan_verificar}" class="ink-muted">Nenhum pedido em VERIFICAR.</td></tr>'
     )
 
@@ -662,8 +699,9 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
         )
     botoes_html = "".join(botoes)
 
-    valores_rbx = (conferencia_rbx or {}).get("valores_rbx") or {}
-    valores_rb = (conferencia_rbx or {}).get("valores_rb") or {}
+    fonte_valores_guia2 = conferencia_rbx or valores_pedidos or {}
+    valores_rbx = fonte_valores_guia2.get("valores_rbx") or {}
+    valores_rb = fonte_valores_guia2.get("valores_rb") or {}
     guia2_html = f"""
       <div class="grid-main">
         <div class="col">
@@ -691,11 +729,11 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     titulo = f"Conciliacao {canal} - {data}"
     chave_local_storage = f"ajustados_{canal.lower()}_{data.replace('.', '')}"
     # Avisos discretos do topo (texto simples, sem barra de cor cheia) --
-    # o alerta vermelho de VERIFICAR (alerta_html) e o unico que precisa
-    # chamar atencao de verdade; esses aqui so informam de passagem. Pedido
-    # do Everton, 17/09/2026: antes "Scraper pronto" era um botao azul
-    # cheio e "Valores do ML atualizados" uma barra verde cheia, competindo
-    # com o alerta pela atencao.
+    # so informam de passagem, sem competir por atencao. Pedido do Everton,
+    # 17/09/2026: antes "Scraper pronto" era um botao azul cheio e "Valores
+    # do ML atualizados" uma barra verde cheia. O alerta vermelho de
+    # VERIFICAR foi removido (18/09/2026, pedido do Everton) -- a propria
+    # fila VERIFICAR logo abaixo ja mostra isso.
     avisos_topo = []
     if caminho_bat_arquivar:
         # Destacado (verde) mesmo no meio dos avisos discretos -- e o unico
@@ -714,24 +752,10 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
             f'<div class="aviso-topo"><span class="ponto" style="background:{COR_OK}"></span>'
             f'Valores do Mercado Livre atualizados</div>'
         )
-    elif ml_de_cache:
-        avisos_topo.append(
-            '<div class="aviso-topo"><span class="ponto" style="background:var(--ink-muted)"></span>'
-            'Valores do Mercado Livre de uma consulta anterior (rodou sem scraper) -- '
-            'pode ter pedido novo ainda sem consultar</div>'
-        )
-    if caminho_bat_scraper:
-        # Sem link "download": o Chrome ignora esse atributo quando a
-        # propria pagina e file:// (seguranca do navegador) -- em vez de
-        # baixar, so navega pro .bat e mostra o texto dele na tela. So avisa
-        # onde esta. Os .bat ficam na RAIZ (pasta_saida), uma pasta acima do
-        # dashboard (Conciliacoes/) -- nao "nessa mesma pasta". Pedido do
-        # Everton, 15/09/2026: juntar todos os .bat na raiz, so xlsx/html
-        # dentro das subpastas.
-        avisos_topo.append(
-            f'<div class="aviso-topo">Scraper pronto: {html.escape(caminho_bat_scraper)} '
-            '(uma pasta acima -- da 2 cliques nele)</div>'
-        )
+    # Avisos de "ML de cache" e "Scraper pronto" removidos (18/09/2026,
+    # pedido do Everton) -- ruido visual sem uso no dia a dia. ml_de_cache/
+    # caminho_bat_scraper continuam sendo aceitos (interativo.py ainda gera
+    # o .bat na RAIZ normalmente, so nao tem mais aviso apontando pra ele).
     avisos_topo_html = "".join(avisos_topo)
 
     corpo = f"""<!doctype html>
@@ -770,31 +794,16 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     display: flex; align-items: center; gap: 6px; padding: 1px 2px;
   }}
   .aviso-topo .ponto {{ width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
-  .alerta {{
-    flex: 0 0 auto; background: #2e1a1a; border: 1px solid #e0524f55; color: #ff9b93;
-    border-radius: 8px; padding: 10px 16px; font-size: 0.9rem;
-  }}
-  .alerta .icone {{
-    display: inline-flex; width: 18px; height: 18px; border-radius: 50%;
-    background: #e0524f; color: #14161a; align-items: center; justify-content: center;
-    font-weight: bold; margin-right: 6px; font-size: 0.8rem;
-  }}
   .grid-main {{ flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 320px 1fr; gap: 14px; }}
-  @media (max-width: 1000px) {{ html, body {{ overflow: auto; }} .wrap {{ height: auto; }} .grid-main {{ grid-template-columns: 1fr; }} }}
+  @media (max-width: 1000px) {{ html, body {{ overflow: auto; }} .wrap {{ height: auto; }} .grid-main {{ grid-template-columns: 1fr; }} .linha-topo {{ flex-direction: column; }} }}
   .col {{ min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; }}
+  .linha-topo {{ flex: 0 0 auto; display: flex; flex-direction: row; gap: 14px; }}
+  .linha-topo .painel {{ flex: 1 1 0; min-width: 0; }}
   .painel {{
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
     min-height: 0; min-width: 0; display: flex; flex-direction: column;
   }}
   .painel h2 {{ font-size: 0.85rem; margin: 0 0 10px; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.03em; }}
-  .cards {{ display: flex; flex-direction: row; flex-wrap: nowrap; gap: 12px; flex: 0 0 auto; }}
-  .card {{
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
-    width: auto; min-width: 150px; height: 76px; flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
-  }}
-  .card-label {{ font-size: 0.78rem; color: var(--ink-secondary); white-space: nowrap; }}
-  .card-valor {{ font-size: 1.35rem; font-weight: 600; margin-top: 4px; white-space: nowrap; }}
-  .card-sub {{ font-size: 0.7rem; color: var(--ink-muted); margin-top: 2px; white-space: nowrap; }}
   .ponto {{ width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
   .alvo-linha {{ display: flex; justify-content: space-between; gap: 10px; font-size: 0.82rem; padding: 4px 0; border-bottom: 1px dashed var(--gridline); }}
   .alvo-linha span:first-child {{ flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }}
@@ -851,36 +860,29 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   </div>
 
   <div class="guia" id="guia-1">
-  {alerta_html}
   {avisos_topo_html}
 
-  <div class="cards">{cards_html}</div>
-
-  <div class="grid-main">
-    <div class="col">
-      <div class="painel">
-        <h2>Alvo do dia</h2>
-        {alvo_html}
-      </div>
-      {f'<div class="painel"><h2>Original x Transitoria</h2>{conferencia_html}</div>' if conferencia_html else ""}
-      {f'<div class="painel"><h2>Historico TOTVS ({html.escape(canal)})</h2>{historico_html}</div>' if historico_html else ""}
+  <div class="linha-topo">
+    <div class="painel">
+      <h2>Alvo do dia</h2>
+      {alvo_html}
     </div>
+    {f'<div class="painel"><h2>Original x Transitoria</h2>{conferencia_html}</div>' if conferencia_html else ""}
+    {f'<div class="painel"><h2>Historico TOTVS ({html.escape(canal)})</h2>{historico_html}</div>' if historico_html else ""}
+  </div>
 
-    <div class="col">
-      <div class="painel tabela-verificar">
-        <h2>Fila VERIFICAR</h2>
-        <div class="tabela-scroll">
-          <table>
-            <thead><tr>
-              <th class="chk-col"></th><th>RBX</th><th>RB</th><th>Diferença extrato</th>
-              <th>Pedido</th><th>Descrição</th><th>DIF</th>
-              {'<th>Marcação</th>' if NATUREZAS_EXTRAS else ''}
-              <th>Comissao</th><th>Desc/Bonus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
-            </tr></thead>
-            <tbody>{tabela_html}</tbody>
-          </table>
-        </div>
-      </div>
+  <div class="painel tabela-verificar">
+    <h2>Fila VERIFICAR</h2>
+    <div class="tabela-scroll">
+      <table>
+        <thead><tr>
+          <th class="chk-col"></th><th>RBX</th><th>RB</th><th>Diferença extrato</th><th>AB total</th>
+          <th>Pedido</th><th>Descrição</th><th>DIF</th>
+          {'<th>Marcação</th>' if NATUREZAS_EXTRAS else ''}
+          <th>Comissao</th><th>Desc/Bonus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
+        </tr></thead>
+        <tbody>{tabela_html}</tbody>
+      </table>
     </div>
   </div>
 
@@ -970,9 +972,9 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
   var ORIGEM = "MKP";
   var PAGADOR = "MELI";
   var LOJA = {json.dumps(loja)};
-  // "751" confirmado pro FULL (18/09/2026) -- so o FULL existe
-  // configurado hoje, ver rebate_cmm.py/rebate_fora_da_regra.py.
-  var VENDEDOR = "751";
+  // Vem de CANAIS[canal]["vendedor"] (FULL 751, ES 763), o mesmo do
+  // rebate_cmm.py -- antes era "751" fixo pra qualquer canal.
+  var VENDEDOR = {json.dumps(vendedor)};
   // Usado pra montar o HISTORICO das marcacoes extras (Mediacao/Cashback/
   // etc, ver NATUREZAS_EXTRAS): prefixo_mov + "_" + motivo da opcao
   // escolhida, mesmo padrao do Frete/Comissao/Rebate (calculado em Python
@@ -1102,7 +1104,7 @@ if __name__ == "__main__":
     # tem que gerar 2 checkboxes na MESMA celula Frete (2209/X103925 pro
     # custo de envio, 2804/X103925 pra tarifa -- SEMPRE Transitoria, mesmo
     # o CMM real mostrando "103925" naquelas linhas, ver CONTA_TRANSITORIA),
-    # sem quebrar a contagem de <td> da linha (12, igual as demais colunas
+    # sem quebrar a contagem de <td> da linha (13, igual as demais colunas
     # da tabela).
     linhas_split = _linhas_tabela(
         pd.DataFrame({
@@ -1110,16 +1112,65 @@ if __name__ == "__main__":
             "ML_ENVIO": [-30.0], "ML_CUSTO_ENVIO": [-22.0], "ML_REBATE": [0.0],
         }),
         historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO",
-                    "comissao": "MKP_ME_FULL_TARIFA DE COBRANCA"},
+                    "comissao": "MKP_ME_FULL_TARIFA DE COBRANÇA"},
     )
-    assert linhas_split.count("<td") == 12
+    assert linhas_split.count("<td") == 13
     assert ('data-motivo="DESPESAS DE FRETE ENVIO" data-natureza="2209" '
             'data-conta="X103925"') in linhas_split
     assert 'data-valor="-22,00"' in linhas_split
-    assert ('data-motivo="TARIFA DE COBRANCA" data-natureza="2804" '
+    assert ('data-motivo="TARIFA DE COBRANÇA" data-natureza="2804" '
             'data-conta="X103925"') in linhas_split
-    assert 'data-historico="MKP_ME_FULL_TARIFA DE COBRANCA"' in linhas_split
+    assert 'data-historico="MKP_ME_FULL_TARIFA DE COBRANÇA"' in linhas_split
     assert 'data-valor="-8,00"' in linhas_split
+
+    # Diferenca extrato: quando o pedido JA tem TOTAL_RB != 0 (achado no
+    # cruzamento inicial contra CONCILIADOR_RB.xlsx, ver cruzamento.py),
+    # RB/RBX (AUXILIAR/rb.xlsx e rbx.xlsx) mostra a MESMA transacao --
+    # Diferenca extrato tem que ser so o DIF puro, sem descontar RB/RBX de
+    # novo (senao desconta a mesma grana 2x). Cenario real (pedido
+    # 2000018137884794, 09/09/2026): DIF=371.65 (= REPASSE 2283.08 -
+    # TOTAL_RB 1911.43), RBX=1911.43 (mesma transacao) -- tinha que mostrar
+    # 371.65 (o que ainda falta lancar), nao -1539.78 (desconto duplicado).
+    # Pedido do Everton, 18/09/2026.
+    linhas_duplicado = _linhas_tabela(
+        pd.DataFrame({
+            "PEDIDO_MKP": ["9"], "DIF": [371.65], "TOTAL_RB": [1911.43],
+            "ML_ENVIO": [0.0], "ML_REBATE": [0.0],
+        }),
+        conferencia_rbx={"valores_rb": {}, "valores_rbx": {"9": 1911.43}},
+    )
+    assert _valor_ml(371.65) in linhas_duplicado  # DIF puro
+    assert _valor_ml(-1539.78) not in linhas_duplicado  # desconto duplicado (bug antigo)
+    assert f'<span class="ponto" style="background:{COR_ALERTA}"></span>' in linhas_duplicado  # vermelho: ainda falta lancar
+
+    # Cenario real (pedido 2000018137884794, 10/09/2026): lancamento antigo
+    # (1911.43, mesmo do TOTAL_RB) foi CANCELADO e REEMITIDO como agregado
+    # de 2283.08 -- RBX no liquido ja fechou o pedido, mas e maior que
+    # TOTAL_RB (nao e mais uma duplicata simples). A formula unificada
+    # (DIF - RB - RBX + TOTAL_RB) tem que fechar em 0 (verde) sem precisar
+    # de caso especial. Pedido do Everton, 18/09/2026.
+    linhas_reemitido = _linhas_tabela(
+        pd.DataFrame({
+            "PEDIDO_MKP": ["9"], "DIF": [371.65], "TOTAL_RB": [1911.43],
+            "ML_ENVIO": [0.0], "ML_REBATE": [0.0],
+        }),
+        conferencia_rbx={"valores_rb": {}, "valores_rbx": {"9": 2283.08}},
+    )
+    assert _valor_ml(0.0) in linhas_reemitido
+    assert f'<span class="ponto" style="background:{COR_OK}"></span>' in linhas_reemitido  # verde: fechou
+
+    # TOTAL_RB == 0 (pedido NAO tinha sido achado no cruzamento inicial) --
+    # continua subtraindo RB/RBX normalmente (RBX aqui e informacao nova,
+    # nao duplicada). DIF=371.65, RBX=371.65 -> fecha em 0 (verde).
+    linhas_novo = _linhas_tabela(
+        pd.DataFrame({
+            "PEDIDO_MKP": ["9"], "DIF": [371.65], "TOTAL_RB": [0.0],
+            "ML_ENVIO": [0.0], "ML_REBATE": [0.0],
+        }),
+        conferencia_rbx={"valores_rb": {}, "valores_rbx": {"9": 371.65}},
+    )
+    assert _valor_ml(0.0) in linhas_novo
+    assert f'<span class="ponto" style="background:{COR_OK}"></span>' in linhas_novo  # verde: fechou
 
     resultado = pd.DataFrame({
         "PEDIDO_MKP": ["1", "2", "3"],
@@ -1135,6 +1186,10 @@ if __name__ == "__main__":
         # DESCRICAO (coluna E do AB, ver cruzamento.py) -- texto real
         # confirmado no pedido 2000017591518558 (08/09/2026).
         "DESCRICAO": ["mediation, refund"],
+        # TOTAL_PED (REPASSE+COMISSAO+FRETE, ver cruzamento.py) -- coluna
+        # "AB total" nova, pro Everton comparar RBX/RB com o que o AB/ML
+        # diz que deveria ter. Pedido do Everton, 18/09/2026.
+        "TOTAL_PED": [1234.56],
     })
     rebate_cmm = pd.DataFrame({"VALOR R$": [50.0]})
     conferencia_rbx = {
@@ -1147,6 +1202,11 @@ if __name__ == "__main__":
         "liquido_transitoria_simulado": -7.0, "qtd_transitoria_simulado": 1,
         "zerada": False, "pronta_para_transferencia": False,
         "liquido_ra": -7.0, "qtd_ra": 1,
+        # Sem cancelamento na Original nesse fixture base (qtd=0) ->
+        # valor_transferencia == liquido_transitoria_simulado (sem ajuste).
+        # Ver cenario dedicado de cancelamento mais abaixo.
+        "liquido_cancelado_original": 0.0, "qtd_cancelado_original": 0,
+        "cancelados_original": [], "valor_transferencia": -7.0,
         # pedido "3": achado no RB com o valor exato da DIF (debito) -> Diferenca
         # extrato deve fechar em 0. Nao achado no RBX.
         "valores_rb": {"3": -921.84}, "valores_rbx": {},
@@ -1191,12 +1251,17 @@ if __name__ == "__main__":
         assert "visibilitychange" in conteudo  # recarrega sozinho ao voltar pra aba
         assert "Acao sugerida" not in conteudo and 'class="acao"' not in conteudo  # coluna removida
         assert ">RBX<" in conteudo and ">RB<" in conteudo and "Diferença extrato" in conteudo
+        assert ">AB total<" in conteudo and _valor_neutro_html(1234.56) in conteudo
         assert "min-width: 100%" not in conteudo  # bug de CSS (colunas espalhadas) corrigido
         assert 'REBATE/c.xlsx">Baixar PROCESSAR_REBATE (1)</a>' in conteudo
-        # Card Rebate (formula) x RBX: bate (cmm 50.0 + cupom 0.0 = 50.0,
-        # rebate_bate=True no fixture) -> bolinha verde + sub com o detalhe.
-        assert 'Rebate (formula) <span class="ponto" style="background:#2fbf4f"></span>' in conteudo
-        assert 'RBX: R$ 50,00 (cupom 0 + CMM 1)' in conteudo
+        # Rebate (formula) x RBX dobrado pra dentro do painel Alvo do dia
+        # (18/09/2026, nao mais card solto): bate (cmm 50.0 + cupom 0.0 =
+        # 50.0, rebate_bate=True no fixture) -> bolinha verde na linha
+        # "+ Rebate (cupom)" + sub-linha com o detalhe.
+        assert '+ Rebate (cupom) <span class="ponto" style="background:#2fbf4f"></span>' in conteudo
+        assert 'RBX (cupom + CMM)' in conteudo
+        assert _moeda(50.0) + ' (cupom 0 + CMM 1)' in conteudo
+        assert '<div class="card"' not in conteudo  # card solto removido
         # pedido "3": achado no RB com o valor exato da DIF (debito) -> DIF fica
         # neutro (pastilha cinza), RB fica colorido (texto vermelho, sem
         # pastilha), Diferenca extrato fecha em 0,00 (neutro) com semaforo
@@ -1233,6 +1298,22 @@ if __name__ == "__main__":
         assert 'var VENDEDOR = "751";' in conteudo
         assert "onclick=\"copiarNatureza('ta-natureza-cmm', this)\"" in conteudo
         assert 'botao.textContent = "Copiado!";' in conteudo
+
+        # Mesmo dashboard pro ES: LOJA "CO" (loja_cmm, nao "COLETAS ES" do
+        # calendario), VENDEDOR "763" (nao o 751 fixo de antes), HISTORICO com
+        # prefixo_mov "MKP_MELI_CO". Confirmado com o CMM real do ES,
+        # 19/09/2026.
+        caminho_es = gerar_dashboard(
+            resultado, fila, rebate_cmm, canal="ES", data="02.01",
+            data_ref_rb="01/01/2026", caminho_xlsx_completo="a.xlsx",
+            caminho_xlsx_rebate="b.xlsx", pasta_saida=tmp, alvo=None,
+            responsavel="EVERTON",
+        )
+        conteudo_es = open(caminho_es, encoding="utf-8").read()
+        assert 'var LOJA = "CO";' in conteudo_es
+        assert 'var VENDEDOR = "763";' in conteudo_es
+        assert 'data-historico="MKP_MELI_CO_DESPESAS DE FRETE ENVIO"' in conteudo_es
+        assert 'data-historico="MKP_MELI_CO_RECEBIMENTO DE REBATE"' in conteudo_es
 
         # Guia 2 (AB / RBX / RB): abas presentes, guia-2 comeca escondida
         # (hidden), lotes/AB Para Processar/RB aparecem na tabela certa.
@@ -1276,7 +1357,7 @@ if __name__ == "__main__":
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
         linha3 = conteudo.split('<tr data-pedido="3">')[1].split("</tr>")[0]
-        assert linha3.count("<td") == 12
+        assert linha3.count("<td") == 13
         assert linha3.count('class="chk-natureza"') == 2  # so Frete + Rebate
         assert "<td>mediation, refund</td>" in linha3  # coluna Descricao (AB)
 
@@ -1329,17 +1410,51 @@ if __name__ == "__main__":
         assert f"acumulando (faltam {_moeda(7.0)} pro alvo)" in conteudo3
         assert "ainda nao bate com o alvo" not in conteudo3  # texto antigo (vermelho) removido
         assert "Valores do Mercado Livre atualizados" in conteudo3
-        assert "rodar_scraper_full_0101.bat" in conteudo3
-        # aviso de arquivar (verde, destacado) -- primeiro entre os avisos
-        # discretos, junto do resto (Scraper pronto / ML atualizado)
+        # aviso "Scraper pronto" removido (18/09/2026) -- caminho_bat_scraper
+        # continua aceito (interativo.py ainda gera o .bat normalmente), so
+        # nao tem mais texto solto apontando pra ele no dashboard.
+        assert "rodar_scraper_full_0101.bat" not in conteudo3
+        assert "Scraper pronto" not in conteudo3
+        # aviso de arquivar (verde, destacado) continua
         assert (f'Transferencia pronta! Arquivar RBX: arquivar_rbx_full_0101.bat '
                 '(uma pasta acima -- da 2 cliques nele)') in conteudo3
         assert f'style="color:{COR_OK_TEXTO}"' in conteudo3
-        assert conteudo3.index("Transferencia pronta!") < conteudo3.index("rodar_scraper_full_0101.bat")
-        # alerta VERIFICAR primeiro, avisos discretos (ML atualizado + scraper
-        # pronto) depois, sem barra de cor cheia (botao-primario removido)
-        assert conteudo3.index('class="alerta"') < conteudo3.index('class="aviso-topo"')
         assert "botao-primario" not in conteudo3
+        # alerta vermelho de VERIFICAR removido (18/09/2026) -- so a propria
+        # fila VERIFICAR mostra isso agora, sem banner duplicado.
+        assert 'class="alerta"' not in conteudo3
+        assert "pedido(s) em VERIFICAR" not in conteudo3
+
+        # Cancelamento na Original (cenario real do FULL 09/09/2026, ver
+        # conferir_rbx.py): Transitoria bruta (218490.47) excede o alvo
+        # (217603.75) exatamente pelo total cancelado (-886.72) -- o painel
+        # tem que listar os cancelamentos, mostrar o valor de transferencia
+        # AJUSTADO (217603.75) e usar ele (nao o bruto) no "pronto pra
+        # transferir". Pedido do Everton, 18/09/2026.
+        conferencia_rbx_cancelado = {
+            **conferencia_rbx,
+            "liquido_transitoria_simulado": 218490.47, "qtd_transitoria_simulado": 1,
+            "zerada": False, "pronta_para_transferencia": True,
+            "liquido_cancelado_original": -886.72, "qtd_cancelado_original": 2,
+            "cancelados_original": [
+                ("2000018007305094", -512.27), ("2000017940791734", -374.45),
+            ],
+            "valor_transferencia": 217603.75,
+        }
+        caminho_cancelado = gerar_dashboard(
+            resultado, fila, rebate_cmm, canal="FULL", data="01.01",
+            data_ref_rb="01/01/2026", caminho_xlsx_completo="a.xlsx",
+            caminho_xlsx_rebate="b.xlsx", pasta_saida=tmp, alvo=217603.75,
+            conferencia_rbx=conferencia_rbx_cancelado,
+        )
+        conteudo_cancelado = open(caminho_cancelado, encoding="utf-8").read()
+        assert "Cancelado na Original hoje" in conteudo_cancelado
+        assert _moeda(-886.72) in conteudo_cancelado
+        assert "Cancelado 2000018007305094" in conteudo_cancelado
+        assert "Cancelado 2000017940791734" in conteudo_cancelado
+        assert "Valor de transferencia (ajustado)" in conteudo_cancelado
+        assert _moeda(217603.75) in conteudo_cancelado
+        assert "pronto para fazer a transferencia" in conteudo_cancelado
 
         # ES depois do FULL, mesma data -> MESMO arquivo, sobrescreve (so o
         # canal atual fica na tela -- pedido do Everton, sem guias)
@@ -1382,7 +1497,7 @@ if __name__ == "__main__":
             # gerado certo pro FULL, igual ja confirmado pro Frete/Rebate.
             assert 'var PREFIXO_MOV = "MKP_ME_FULL";' in conteudo_extra
             linha3_extra = conteudo_extra.split('<tr data-pedido="3">')[1].split("</tr>")[0]
-            assert linha3_extra.count("<td") == 13  # 12 de sempre + Marcacao
+            assert linha3_extra.count("<td") == 14  # 13 de sempre (com AB total) + Marcacao
             assert 'sel-natureza-extra' in linha3_extra
             # JS: select entra na mesma lista que os checkboxes (mesmo
             # formato chk.dataset.*) e persiste em localStorage por pedido.

@@ -9,8 +9,16 @@
 # ignora os parametros, sem abrir nada visivel. So mata o(s) processo(s)
 # do PERFIL DE DEBUG (nunca o Chrome normal do usuario, que fica intacto).
 
+param([switch]$Login)
+
 $ErrorActionPreference = "SilentlyContinue"
 $perfil = "C:\ChromeDebugProfile"
+
+# Janela fora da area visivel da tela (nao minimizada: minimizada o Windows
+# restaura quando o scraper mexe nas abas, e ela aparecia na tela). Continua
+# sendo um Chrome normal com janela (headless o Mercado Pago bloqueia). Pra
+# fazer login manual, rode com -Login (janela normal, visivel).
+$posicao = if ($Login) { @() } else { @("--window-position=-32000,-32000", "--window-size=1280,900") }
 
 function DebugAberto {
     try {
@@ -33,11 +41,15 @@ if (DebugAberto) {
     if (Test-Path $lock) { Remove-Item $lock -Force }
 
     Write-Host "Abrindo Chrome com debug remoto..."
-    Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList @(
+    # Abre as 2 abas (MP e ML) de uma vez: se faltar a aba do ML o scraper
+    # cria uma nova, e isso tambem pode trazer a janela pra frente.
+    Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList (@(
         "--remote-debugging-port=9222",
-        "--user-data-dir=$perfil",
-        "https://www.mercadopago.com.br"
-    )
+        "--user-data-dir=$perfil"
+    ) + $posicao + @(
+        "https://www.mercadopago.com.br",
+        "https://www.mercadolivre.com.br"
+    ))
 
     Start-Sleep -Seconds 2
     if (DebugAberto) {

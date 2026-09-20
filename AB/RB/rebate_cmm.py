@@ -5,14 +5,16 @@ CMM_MELI_ELETROD_Controle de Movimentos Manual 2026.xlsx.
 
 So cobre o caso REBATE (o unico com convencao 100% fixa confirmada ate
 agora -- Manuais/Passo a passo - Resolucao manual de pendencias (Baixas
-no TOTVS).md). VENDEDOR confirmado como "751" pro FULL (18/09/2026, unico
-canal configurado hoje -- ver canais.py). HISTORICO continua em branco:
-nos exemplos reais apareceu como "<RAIZ>_RECEBIMENTO DE REBATE", mas ainda
-nao confirmamos se isso vale pra qualquer pedido/canal -- por pedido do
-Everton, fica em branco ate confirmar.
+no TOTVS).md). LOJA/VENDEDOR/HISTORICO vem de CANAIS[canal] (loja_cmm/
+vendedor/prefixo_mov) -- confirmados com dado real do FULL (LOJA=FULL,
+VENDEDOR=751) e do ES (LOJA=CO, VENDEDOR=763, HISTORICO=
+"MKP_MELI_CO_RECEBIMENTO DE REBATE" = prefixo_mov + "_" + MOTIVO_REBATE).
+Pedido do Everton, 18/09/2026.
 """
 
 import pandas as pd
+
+from canais import CANAIS
 
 NATUREZA_REBATE = 1107
 MOTIVO_REBATE = "RECEBIMENTO DE REBATE"
@@ -40,13 +42,11 @@ def _banco_agencia_conta_por_pedido(rb):
     return por_pedido, fallback
 
 
-def gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb):
-    # "FULL" hardcoded, nao raiz.split("_")[-1] (dava "FU", que e o
-    # chave_rbx usado pra achar linha no extrato, nao o valor certo do
-    # campo LOJA do CMM/MOV) -- essa funcao nao recebe `canal`, e so o
-    # FULL existe configurado hoje (ver canais.py), confirmado com o
-    # Everton, 18/09/2026.
-    loja = "FULL"
+def gerar_rebate_cmm(canal, resultado, raiz, data_ref, responsavel, rb):
+    cfg = CANAIS[canal]
+    loja = cfg["loja_cmm"]
+    vendedor = cfg["vendedor"]
+    historico = f"{cfg['prefixo_mov']}_{MOTIVO_REBATE}"
     por_pedido, fallback = _banco_agencia_conta_por_pedido(rb)
 
     rebates = resultado[resultado["STATUS"] == "REBATE"]
@@ -64,11 +64,11 @@ def gerar_rebate_cmm(resultado, raiz, data_ref, responsavel, rb):
             "MOTIVO DO MOVIMENTO": MOTIVO_REBATE,
             "NATUREZA": NATUREZA_REBATE,
             "PEDIDO MKP / CV": pedido,
-            "VENDEDOR": "751",
+            "VENDEDOR": vendedor,
             "BANCO": conta_info["BANCO"],
             "AGENCIA": conta_info["AGENCIA"],
             "CONTA": conta_info["CONTA"],
-            "HISTORICO": None,
+            "HISTORICO": historico,
             "VALOR R$": row["REBATE"],
             "OBSERVACAO": None,
             "PEDIDO_ERP": None,
@@ -87,7 +87,13 @@ if __name__ == "__main__":
     rb = pd.DataFrame({
         "PED_MKP": ["1"], "BANCO": ["237 - BRADESCO SA"], "AGENCIA": ["3708"], "CONTA": ["X103925"],
     })
-    df = gerar_rebate_cmm(resultado, "MKP_MELI_FU", "18/09/2026", "EVERTON", rb)
+    df = gerar_rebate_cmm("FULL", resultado, "MKP_MELI_FU", "18/09/2026", "EVERTON", rb)
     assert (df["LOJA"] == "FULL").all()  # nao "FU" (chave_rbx, campo errado)
     assert (df["VENDEDOR"] == "751").all()
+    assert (df["HISTORICO"] == "MKP_ME_FULL_RECEBIMENTO DE REBATE").all()
+
+    df_es = gerar_rebate_cmm("ES", resultado, "MKP_MELI_CO_ES", "18/09/2026", "EVERTON", rb)
+    assert (df_es["LOJA"] == "CO").all()
+    assert (df_es["VENDEDOR"] == "763").all()
+    assert (df_es["HISTORICO"] == "MKP_MELI_CO_RECEBIMENTO DE REBATE").all()  # confirmado com dado real do ES
     print("rebate_cmm.py: ok")

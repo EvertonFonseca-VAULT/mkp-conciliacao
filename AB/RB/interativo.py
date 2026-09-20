@@ -255,6 +255,7 @@ def executar(canal, data, pasta_saida, usar_scraper):
             if r["caminho_descricoes_xlsx"] else None
         ),
         conferencia_rbx=r["conferencia_rbx"],
+        valores_pedidos=r["valores_pedidos"],
         caminho_bat_atualizar=f"../{caminho_bat_atualizar}",
         caminho_bat_arquivar=f"../{caminho_bat_arquivar}" if caminho_bat_arquivar else None,
         ml_de_cache=r["ml_de_cache"], responsavel=r["responsavel"],

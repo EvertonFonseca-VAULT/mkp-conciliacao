@@ -62,16 +62,36 @@ def resumo_pedido(numero, context):
     return resumir_linhas(dados["linhas"], plataforma=plataforma, pedido_ml=dados["pedido"])
 
 
+def _barra(feitos, total, pedido, largura=30):
+    """Barra de progresso na mesma linha do terminal (\\r), com o pedido que
+    esta sendo buscado -- o Chrome roda fora da tela, entao o terminal e o
+    unico lugar onde o Everton acompanha. Pedido do Everton, 19/09/2026."""
+    cheio = largura * feitos // total
+    linha = f"[{'#' * cheio}{'-' * (largura - cheio)}] {feitos * 100 // total:3d}% ({feitos}/{total}) pedido {pedido}"
+    print("\r" + linha.ljust(100), end="", flush=True)
+
+
+def _aviso(texto):
+    """Linha propria (nao some quando a barra redesenha)."""
+    print("\r" + " " * 100 + "\r" + texto, flush=True)
+
+
 def resumir_pedidos(numeros, pausa=1.5, tentativas=2):
     """Busca uma lista de pedidos em sequencia, reaproveitando a mesma
     conexao com o Chrome. Retorna {numero: resumo_ou_None}.
 
     O site as vezes falha numa busca isolada (mesmo padrao intermitente ja
-    visto no scraper do SRI) -- tenta de novo antes de desistir."""
+    visto no scraper do SRI) -- tenta de novo antes de desistir. Mostra
+    barra de progresso, e avisa em linha propria cada erro/nao encontrado
+    com o numero do pedido, mais um resumo no final."""
     resultados = {}
+    numeros = list(numeros)
+    total = len(numeros)
+    com_erro, nao_encontrados = [], []
     with sync_playwright() as pw:
         context = conectar_chrome_existente(pw)
-        for numero in numeros:
+        for i, numero in enumerate(numeros):
+            _barra(i, total, numero)
             resumo = None
             for tentativa in range(tentativas):
                 try:
@@ -80,7 +100,23 @@ def resumir_pedidos(numeros, pausa=1.5, tentativas=2):
                     resumo = {"erro": str(exc)}
                 if resumo is not None and "erro" not in resumo:
                     break
+                if tentativa + 1 < tentativas:
+                    motivo = resumo["erro"][:80] if resumo else "nao encontrado"
+                    _aviso(f"  pedido {numero}: tentativa {tentativa + 1}/{tentativas} falhou ({motivo}), tentando de novo...")
                 time.sleep(pausa)
+            if resumo is None:
+                nao_encontrados.append(numero)
+                _aviso(f"  NAO ENCONTRADO pedido {numero}")
+            elif "erro" in resumo:
+                com_erro.append(numero)
+                _aviso(f"  ERRO pedido {numero}: {resumo['erro'][:120]}")
             resultados[numero] = resumo
             time.sleep(pausa)
+    _barra(total, total, "-")
+    ok = total - len(com_erro) - len(nao_encontrados)
+    print(f"\nScraper: {ok} ok, {len(nao_encontrados)} nao encontrado(s), {len(com_erro)} com erro (de {total}).")
+    if nao_encontrados:
+        print("  Nao encontrados:", ", ".join(map(str, nao_encontrados)))
+    if com_erro:
+        print("  Com erro:", ", ".join(map(str, com_erro)))
     return resultados

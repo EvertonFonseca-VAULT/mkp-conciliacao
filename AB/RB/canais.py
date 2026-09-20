@@ -22,6 +22,11 @@ CANAIS = {
         "prefixo": "PROCESSAR_MERCADO FULL",
         "chave_rbx": "FU",  # confirmada com dado real 2x (01/09 e 02/09)
         "loja_calendario": "FULL",
+        # loja_cmm: campo LOJA da linha de Rebate colada no CMM
+        # (Movimento_Bancario) -- confirmado com dado real do FULL,
+        # coincide com loja_calendario mas e um campo diferente (ver ES,
+        # onde "COLETAS ES" != "CO"). Pedido do Everton, 18/09/2026.
+        "loja_cmm": "FULL",
         # prefixo_mov: usado no HISTORICO das naturezas Frete/Comissao/Rebate
         # (dashboard.py) -- confirmado com dado real do CMM_MELI_FULL
         # (rotulos MKP_ME_FULL_DESPESAS DE FRETE ENVIO etc). Pedido do
@@ -32,11 +37,69 @@ CANAIS = {
         # precisar de lancamento manual no CMM) -- ver conferir_rbx.py.
         # Pedido do Everton, 18/09/2026.
         "chave_cupom_rebate": "MKP CUPOM MELI FULL REPASSE",
+        # vendedor: usado pro RA (CHAVE_RA em conferir_rbx.py) -- "CAN-
+        # EXCLUSAO DE TITULO RA" nao tem nenhuma chave de OPERACAO que
+        # identifique o canal (ao contrario de chave_rbx="FU"), entao o
+        # VENDEDOR e o unico jeito confiavel de saber se aquele RA e do
+        # FULL ou de outro canal/produto. Confirmado com dado real do FULL
+        # 09/09/2026: contava RA de outro canal (vendedor "000423"/vazio)
+        # como se fosse do FULL. Tambem usado no campo VENDEDOR do
+        # lancamento CMM (rebate_cmm.py, confirmado com o ES 18/09/2026 --
+        # mesmo valor nos dois usos). Pedido do Everton, 18/09/2026.
+        "vendedor": "751",
+    },
+    "ES": {
+        "raiz": "MKP_MELI_CO_ES",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES",
+        "prefixo": "PROCESSAR_MERCADO COLETAS ES",
+        # loja_calendario: chute pelo nome do canal (sem dado real do
+        # calendario de planejamento pra confirmar) -- se estiver errado
+        # buscar_alvo() so retorna None (sem alvo pra comparar), nao quebra
+        # nada nem gera numero errado (ver calendario_alvo.py:56-58).
+        "loja_calendario": "COLETAS ES",
+        # loja_cmm: campo LOJA da linha de Rebate colada no CMM (diferente
+        # de loja_calendario -- ver comentario em FULL) -- confirmado com
+        # dado real do ES (linha CMM real, 18/09/2026): "...MKP MELI CO
+        # RECEBIMENTO DE REBATE...", ORIGEM=MKP/PAGADOR=MELI/LOJA=CO.
+        "loja_cmm": "CO",
+        "chave_cupom_rebate": "MKP_MELI_CO_ES_REBATE",
+        # vendedor: usado pro filtro de RA (CHAVE_RA) E pro campo VENDEDOR
+        # do lancamento CMM (confirmado pelo Everton, 18/09/2026, junto com
+        # a linha CMM real do ES acima -- ao contrario do que se pensava
+        # pro FULL, os dois usos sao o mesmo valor).
+        "vendedor": "763",
+        # prefixo_mov confirmado pelo Everton, 18/09/2026, com os HISTORICO
+        # reais do CMM do ES (MKP_MELI_CO_DESPESAS DE FRETE ENVIO,
+        # MKP_MELI_CO_RECEBIMENTO DE REBATE, etc -- mesmo padrao
+        # prefixo_mov + "_" + MOTIVO do FULL, ver dashboard._painel_historico).
+        "prefixo_mov": "MKP_MELI_CO",
+        # chave_rbx: confirmado pelo Everton, 18/09/2026, com rotulos reais
+        # do RB/RBX do ES -- ao contrario do FULL ("FU" sozinho cobre tudo),
+        # o ES nao tem 1 raiz curta comum a todos os tipos de lancamento:
+        #   - pedido a pedido (Transitoria), 2 variantes de raiz confirmadas:
+        #     "REC MKP MKP_MELI_ES REF PARC N" -> "MKP_MELI_ES", e tambem
+        #     "REC MKP MKP_MELI_CO REF PARC N" (sem "ES") -> precisa de
+        #     "MKP_MELI_CO REF PARC" (com espaco, ver abaixo). CAN-REC e so
+        #     o mesmo rotulo com prefixo de cancelamento, ja coberto pelas
+        #     mesmas chaves (substring).
+        #   - agregado fim de dia: "MKP_MELI_CO_ES_REPASSE" /
+        #     "MKP_MELI_CO_ES_CANCELAMENTOS" -> "MKP_MELI_CO_ES"
+        #   - manual CMM (Frete/Comissao/Rebate/Mediacao): "MKP_MELI_CO_..."
+        #     (sem "ES") -> coberto pelo mesmo "MKP_MELI_CO_" (ver abaixo)
+        # "MKP_MELI_CO_ES" e um caso particular de "MKP_MELI_CO_", entao so
+        # precisa dela + as 2 variantes de pedido a pedido (3 chaves no
+        # total, conferir_rbx._mask_chave faz OR entre elas). O "_"/espaco
+        # no final de "MKP_MELI_CO_"/"MKP_MELI_CO REF PARC" e proposital:
+        # sem isso bateria tambem com "MKP_MELI_CO05_..." (canal "Mercado
+        # Coletas 05", confirmado que lanca nos MESMOS rb.xlsx/rbx.xlsx do
+        # ES) -- "ES" sozinho tambem foi descartado por colidir com
+        # "ESTORNO"/"DESPESAS" de outros lancamentos.
+        "chave_rbx": ("MKP_MELI_ES", "MKP_MELI_CO_", "MKP_MELI_CO REF PARC"),
     },
 }
 
-# MOVEIS/ES/ELETRO removidos daqui (18/09/2026, pedido do Everton): por
-# enquanto o projeto roda so FULL, nao e pra manter os outros canais
+# MOVEIS/ELETRO removidos daqui (18/09/2026, pedido do Everton): por
+# enquanto o projeto roda so FULL/ES, nao e pra manter os outros canais
 # meio-configurados (config nunca confirmada com dado real deles). Quando
 # for a hora de replicar pra outro canal, volta no historico do git (commit
 # 142ffb8 em diante) pra recuperar os dicts antigos como ponto de partida.
