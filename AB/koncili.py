@@ -20,6 +20,7 @@ LAYOUT_ES antes de processar um AB baixado daqui.
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 
@@ -43,10 +44,11 @@ CANAIS_KONCILI = {
     "MOVEIS": {"conta": "WEBCO MÓVEIS", "pasta": "MOVEIS", "prefixo": "MERCADO MOVEIS", "subpasta": "", "loja": "MOVEIS"},
     "PRIME": {"conta": "WEBCOPRIME", "pasta": "PRIME", "prefixo": "MERCADO PRIME", "subpasta": "", "loja": "PRIME"},
     # Contas descobertas casando RESULTADO x calendario (valor E dia, 11-12 dias
-    # cada, 19/09/2026) -- nao pelo nome. So conferem: o AB do X: desses canais
-    # esta em outro layout (FULL 40 colunas, CENTER/WEB/CO05 35), entao salvar
+    # cada, 19/09/2026) -- nao pelo nome. FULL: o export do Koncili (40 colunas)
+    # e identico ao do X:, so a aba vira "Relatorio". CENTER/WEB/CO05 so
+    # conferem: o AB do X: deles esta em outro layout (35/48 colunas), e salvar
     # o export de 60 colunas la misturaria layouts e quebraria o processar.
-    "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "salvar": False},
+    "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "aba": "Relatorio"},
     "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "salvar": False},
     "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "salvar": False},
     "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05", "salvar": False},
@@ -155,7 +157,13 @@ def conferir(page, req, hdr, canal, data, salvar=False):
             print(f"    ja existe no X:, nao sobrescrevi: {destino}")
         else:
             os.makedirs(os.path.dirname(destino), exist_ok=True)
-            os.replace(tmp, destino)
+            if c.get("aba"):
+                import openpyxl
+
+                wb = openpyxl.load_workbook(tmp)
+                wb.active.title = c["aba"]
+                wb.save(tmp)
+            shutil.move(tmp, destino)  # os.replace nao atravessa unidades (C: -> X:)
             print(f"    salvo: {destino}")
     return {"repasse": rep["id"], "ab": ab, "koncili": kon, "calendario": cal, "ok_koncili": ok_kon, "ok_calendario": ok_cal}
 
