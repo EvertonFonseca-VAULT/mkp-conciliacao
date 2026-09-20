@@ -53,7 +53,12 @@ def buscar_alvo(canal, data_ref):
     Retorna o VALOR_EB do calendario pro canal/dia, ou None se nao achar
     planilha, aba ou linha (mes ainda nao cadastrado, canal fora do
     calendario etc -- nao e erro, so significa "sem alvo pra comparar")."""
-    loja = CANAIS.get(canal, {}).get("loja_calendario")
+    return buscar_alvo_loja(CANAIS.get(canal, {}).get("loja_calendario"), data_ref)
+
+
+def buscar_alvo_loja(loja, data_ref):
+    """Mesma busca de buscar_alvo, mas direto pelo nome da LOJA no calendario
+    (usado pelo koncili.py, que confere canais que nao estao no CANAIS)."""
     if not loja or not data_ref:
         return None
 
