@@ -78,6 +78,113 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - Dashboard: HTML de um arquivo só, offline. A fila VERIFICAR segue a ordem das baixas: **Frete, Comissão, Banco** (Banco = RBX + DIF), com clique para copiar o valor. Naturezas: Frete 2209, Tarifa 2804, Rebate 1107.
 - Estado do analista (ajustados, marcações) fica no `localStorage` do navegador, por canal e dia.
 
+## Onde mexer (mudança → arquivo)
+
+| Quero mudar… | Abra |
+|---|---|
+| Pasta, prefixo do AB, PTI, frete ou nome de saída de um canal do Para Processar | `AB/rodar_canal.py` → `CANAIS_PP` |
+| Conta do Koncili, pasta ou layout do AB baixado | `AB/koncili.py` → `CANAIS_KONCILI` |
+| Regra de cruzamento com o TOTVS/SRI (chave SHIPPING_ID) | `AB/FULL/processar_full.py` |
+| Layout de colunas do AB (35, 40, 43, 48 ou 60) | `AB/ES/processar_es.py` (`carregar_ab`), `AB/ES/tipagem_es.py`, `AB/FULL/tipagem_full.py` |
+| Categorias do AB (Deduzir Cupom, Taxa financiamento…) e fórmulas de validação/pagamento/frete | `AB/MOVEIS/modelo_ab.py` |
+| Leitura do PTI (separador, encoding, vários arquivos) | `AB/FULL/modelo_ab_full.py` → `carregar_pti` |
+| Colunas do empilhado ou a gravação no xlsx grande | `AB/empilhar.py`, `AB/empilhar_gravar.py` |
+| Ordem de STATUS (REBATE, SEM DIFF, EST COM…) e cálculo de DIF | `AB/RB/cruzamento.py` |
+| Config por canal da conciliação (loja, vendedor, onde está o Para Processar) | `AB/RB/canais.py` |
+| Históricos e códigos de natureza do TOTVS | `AB/RB/historicos.py`, `AB/RB/dashboard.py` |
+| Colunas, cores, copiar valor ou linhas CMM/MOV do dashboard | `AB/RB/dashboard.py` |
+| O que o scraper lê no ML/MP e como classifica as linhas | `AB/RB/scraper_ml.py`, `AB/RB/classificar_ml.py` |
+| Layout do CMM de rebate | `AB/RB/rebate_cmm.py`, `AB/RB/rebate_processar.py` |
+
+## Módulos (documentação)
+
+### Frente PROCESSAR (AB → Para Processar)
+
+**`AB/koncili.py`** — Baixa o AB no Koncili e confere com o calendário. Precisa de `playwright` e das variáveis `KONCILI_USUARIO` / `KONCILI_SENHA`.
+- `login(page, usuario, senha)`: Playwright headless. Não usa `networkidle`, porque a página nunca assenta.
+- `cabecalhos_api(page)`: a API autentica pelo header `gumgatoken`, que a própria página envia.
+- `achar_repasse(req, hdr, conta, data_iso)`: `POST /reconciliation/api/view/conciliation/search` e pega o repasse cujo período começa na data.
+- `resultado(req, hdr, id_repasse)`: `kpis.result` = RESULTADO.
+- `baixar_ab(page, id_repasse, destino)`: botão `#btn-view-spreadsheet`.
+- `soma_ab`, `caminho_destino(canal, data)`, `_ajustar_layout` (aba e colunas no padrão do X:; CENTER/WEB usam `COLUNAS_WEB`, 35 colunas), `conferir(...)` (AB × RESULTADO × calendário).
+- Contas em `CANAIS_KONCILI`. Nunca imprimir token ou sessão em log.
+
+**`AB/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO ou TODOS).
+- `CANAIS_PP`: configuração por canal (pasta e prefixo do AB, PTI, frete, pasta e nome de saída, ano no nome).
+- `caminhos(canal, data)`: devolve o AB de entrada e o nome do arquivo de saída.
+- `processar(canal, data, pasta_saida, forcar)`: FULL usa `rodar_full.rodar` (2 vendedores no PTI); os demais usam `rodar_es.rodar`. Grava a aba "Para Processar" e imprime linhas, H:M e quantos "Verificar". Não sobrescreve sem `--forcar`.
+- `main(argv)`: se o AB de um canal não está no X:, avisa e segue com os outros.
+
+**`AB/FULL/processar_full.py`** — Motor do cruzamento (tradução das macros do PB BASE.xlsm).
+- `carregar_ab`, `marcar_flags` e `filtrar_validos` (linhas válidas, colunas T/U do Para_Processar).
+- `carregar_totvs()`: lê `TOTVS_2022`, aba "01-01 - Listagem do Browse" (cabeçalho nas linhas 1-4).
+- `cruzar_totvs(df, totvs)`: chave **SHIPPING_ID**; marca `verificar` quando não acha.
+- `resolver_pendentes_via_sri(pendentes)`: fallback no SRI para o que ficou "Verificar".
+- `gerar_para_processar(cruzado)`: monta a aba final. `_limpar_id` remove o `.0` dos IDs.
+
+**`AB/FULL/modelo_ab_full.py`** — `montar_ab_pp(para_processar)` cria os apelidos que a Validação espera (ARRUMAR, NOVO CREDITO, NOVO DEBITO, `CUSTO DE OFERECER DESCONTO` = 0). `carregar_pti(caminho)` lê o PTI (latin-1, separador `;`, aceita curinga com vários arquivos). Os outros canais reaproveitam.
+
+**`AB/MOVEIS/modelo_ab.py`** — Fórmulas do MODELO AB MERCADO, compartilhadas por FULL, ES e MOVEIS.
+- `conferencia_ab_original` e `calcular_ab_para_processar` (colunas P:U).
+- `montar_validacao`: agrega por pedido, classifica (`Deduzir Cupom`, `Deduzir Taxa financiamento CMM`…) e devolve `Verificar` quando não fecha com o PTI.
+- `montar_pagamento`, `montar_frete`, `montar_para_processar` (Pagamento + Frete + linha de ajuste) e `resumo_acao_manual`.
+- As colunas de saída do Pagamento estão em `COLUNAS_PAGAMENTO` (15 colunas, H:M = valores).
+
+**`AB/FULL/rodar_full.py`** (+ `rodar_full.bat`, `escolher_full.py`, `criar_pastas.bat`) — `rodar(caminho_ab, caminho_pti)` devolve (validação, pagamento, frete, processar). `--data DD.MM.AAAA` resolve AB e saída sozinho. `escolher_full.py` pergunta mês e arquivo. `tipagem_full.py` corrige colunas de valor que vêm como texto.
+
+**`AB/ES/`** — `processar_es.carregar_ab` é o único ponto que muda por layout: traduz o export em português (43 colunas), aceita as 60 em outra ordem e completa as 35 do CENTER/WEB. `rodar_es.rodar(caminho_ab, caminho_pti, frete)`: com `caminho_pti=None` só faz o cruzamento TOTVS/SRI (ELETRO); com `frete=False` não lança frete (MOVEIS). `tipagem_es.py` guarda `LAYOUT_ES` e o mapa `PT_PARA_EN`; `modelo_ab_es.py` só reexporta `montar_ab_pp` e `carregar_pti` do FULL; `escolher_es.py` é o seletor de arquivo.
+
+**`AB/empilhar.py` + `AB/empilhar_gravar.py`** — Empilhado FULL e ES: o AB original linha a linha mais o que o processo calcula (25 colunas, incluindo Nº QUE ESTÁ NO TOTVS, OPERAÇÃO, VALOR, SEQUENCIA e CHAVE_PRIMÁRIA).
+- `empilhar.py`: `cruzar_dia`, `montar_linhas` e `ensaio` (monta e confere a soma de VALOR × calendário; cache em `AB/empilhar_cache/`).
+- `empilhar_gravar.py`: acrescenta direto no XML do .xlsx (arquivo de 400+ MB; o openpyxl perderia os valores em cache das fórmulas). Textos como `inlineStr`, remove `calcChain`, corrige SEQUENCIA na cauda e acrescenta uma linha por dia na aba CALENDÁRIO. Backup em `C:\BACKUP EMPILHADO` antes de publicar. Rodar de novo com um dia já empilhado não duplica.
+- Nunca abrir e regravar o empilhado com openpyxl.
+
+**`AB/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard.
+
+### Frente Conciliação (`AB/RB`)
+
+**Entrada e orquestração**
+- `interativo.py`: assistente (`iniciar_conciliacao.bat`). Pergunta canal e data e chama `rodar_conciliacao_rb.processar`. Modo direto: `python interativo.py --canal FULL --data DD.MM.AAAA [--scraper] [--saida-pasta X]`. Exige `AUXILIAR\rb.xlsx`, `rbx.xlsx` e `C:\TEMP\Conciliador - Backup\CONCILIADOR_RB.xlsx` com **Dt.Ref igual ao dia**; senão recusa.
+- `rodar_conciliacao_rb.py`: `processar(canal, data, pasta_saida, usar_scraper)` agrega, cruza, enriquece, aplica rebate e salva. `_ordenar_fila_verificar` divide a fila em 2 grupos por sinal; `_arquivar_rbx` guarda cópia do rbx.
+- `canais.py`: fonte única da config por canal (raiz do histórico TOTVS, onde está o Para Processar, chave do RB, loja do calendário, vendedor, prefixo MOV). `resolver_para_processar` e `validar_data_rb`.
+
+**Cálculo**
+- `parser_rb.py`: `metadata_rb` (Dt.Ref) e `carregar_rb` (relatório paginado, repete o cabeçalho a cada ~57 linhas e termina com totais).
+- `agregador.py`: `agregar_por_pedido` (replica a macro `SubstituirEProcessar_V2`).
+- `cruzamento.py`: `cruzar_com_rb`. STATUS na ordem REBATE (CUPOM ≠ 0) → SEM DIFF (DIF = 0) → EST COM (COMISSAO + DIF = 0, DIF < 0) → MEDIACAO (DIF − MEDIACAO = 0) → VERIFICAR. `DIF = REPASSE − TOTAL_RB`; `Dif. extrato = DIF − RB − RBX + TOTAL_RB`.
+- `conferir_rbx.py`: confere as 2 contas. A **Original (103925)** tem que fechar com o calendário; a **Transitória (X103925)** acumula o movimento e, quando o líquido bate com o alvo, já dá para transferir para a Original. Inclui `conferir_pedidos`.
+- `calendario_alvo.py`: `buscar_alvo(canal, data_ref)` e `buscar_alvo_loja(loja, data_ref)` (o empilhado usa a segunda).
+- `enriquecer.py`: histórico e ação sugeridos por pedido; `_rebate_com_sinal_do_dif`.
+- `historicos.py`, `extrair_historicos.py` e `historicos_totvs.json`: raiz do histórico TOTVS por loja (`_REPASSE`, `_COMISSAO`, `_FRETE`, `_ESTORNO`, `_ANUNCIO`), extraída da aba HISTORICOS do CONTROLE_V2.
+- `ids.py`: `limpar_id` (sem `.0`).
+
+**Scraper ML/MP**
+- `scraper_ml.py`: `resumo_pedido(numero, context)` (SHIPPING_ID do ML começa com "4"; senão usa EXTERNAL_REFERENCE/MP) e `resumir_pedidos` (progresso e tentativas). Usa Chrome com debug remoto (porta 9222, `abrir_chrome_debug.bat`).
+- `classificar_ml.py`: sem playwright; classifica linhas (comissão, envio, rebate, desconto/bônus) por substring.
+- `descricoes_ml.py`: guarda todas as linhas raspadas em `descricoes_ml_<canal>_<data>.xlsx`.
+
+**Rebate**
+- `rebate_cmm.py`: linhas de rebate para a aba Movimento_Bancario do CMM (LOJA, VENDEDOR e HISTÓRICO vêm de `CANAIS`).
+- `rebate_processar.py`: layout `PROCESSAR_REBATE` (só FULL), gravado em `C:\RODAR TOTVS\PROCESSAR\REBATE\`.
+- `rebate_fora_da_regra.py`: lê o resultado do TOTVS (SpreadsheetML disfarçado de .xls ou .xlsx) e monta o CMM dos "Fora da Regra".
+- `conferir_rbx.py` e `test_interativo.py` completam a pasta (conferência e teste do assistente).
+
+**`AB/RB/dashboard.py`** — HTML único e offline. `gerar_dashboard(resultado, fila_verificar, rebate_cmm, …)` preenche o template com placeholders `@@NOME@@`.
+- `_faixa_status`: mostra se o dia fecha com o calendário. Alvo e Calculado copiam só os dígitos (212.638,47 → `21263847`).
+- `_linhas_tabela`: colunas da fila VERIFICAR, na ordem `Aj. | RBX | RB | Dif. extrato | AB total | Pedido | Descrição | DIF | Frete | Comissão | BANCO | [Marcação] | Desc/Bônus | Repasse | Rebate`. O cabeçalho (`<thead>`) fica na mesma função e tem que seguir a mesma ordem.
+- BANCO = RBX + DIF (sem RBX, só a DIF). Frete aparece em valor absoluto quando a DIF é positiva. Frete, Comissão e BANCO copiam ao clicar (`_valor_copia`: vírgula decimal, sem milhar, ex.: `586,94`).
+- Naturezas marcáveis, que geram linhas CMM e MOV na gaveta do rodapé: Frete 2209, Tarifa 2804 e Rebate 1107, todas na conta X103925, banco 237, agência 3708.
+- `localStorage`: `ajustados_<canal>_<data>` (+ `_aba`, `_natureza`, `_natureza_extra`, `_drawer`) e `concfull:tema`.
+- Autoteste: `python dashboard.py` → `dashboard.py: ok`.
+
+## Cuidados conhecidos
+
+- VPN caída derruba o acesso ao X:.
+- `os.replace` não funciona de C: para X:; usar `shutil.move`.
+- RB e RBX precisam ter a Dt.Ref do dia; o `interativo.py` recusa se não bater.
+- O calendário às vezes está errado (ex.: MOVEIS 04/09). Conferir com o Koncili antes de achar que o processo errou.
+- Editar arquivo `.py` por script via heredoc no Bash estraga barras invertidas (`\2026` vira octal). Usar o editor.
+
 ## Dados e segurança
 
 - **Dados nunca são versionados**: `.xlsx`, `.xls`, `.db`, `Dados/` e `Projeto Imports/` estão no `.gitignore`. Contêm valores reais de repasse e pedido.
