@@ -1,6 +1,7 @@
-"""Para Processar dos canais ES, MOVEIS e ELETRO (o FULL tem o rodar_full.py).
+"""Para Processar dos canais FULL, ES, MOVEIS e ELETRO, num comando so.
 Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
 
+  FULL    TOTVS/SRI + PTI (750+751)    -> PROCESSAR\\FULL\\PROCESSAR_MERCADO FULL dd.mm.aaaa.xlsx (igual rodar_full.py)
   ES      TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS ES\\PROCESSAR_MERCADO COLETAS ES dd.mm.xlsx
   MOVEIS  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\MOVEIS\\PROCESSAR_MERCADO MOVEIS dd.mm.aaaa.xlsx
   ELETRO  so TOTVS/SRI (sem PTI/frete) -> ELETRODOMESTICO\\MERCADO ELETRODOMESTICO dd.mm.xlsx
@@ -9,7 +10,8 @@ Validado em 19-20/09/2026: MOVEIS 04.09 e ELETRO 04.09 contra os arquivos manuai
 ES 01-10.09 (ver rodar_es.py) e H:M de todos os dias contra o calendario/Koncili.
 
 Uso:
-    python rodar_canal.py MOVEIS 11.09.2026 18.09.2026     # grava (nao sobrescreve)
+    python rodar_canal.py FULL 11.09.2026 18.09.2026       # grava (nao sobrescreve)
+    python rodar_canal.py TODOS 22.09.2026                 # FULL, ES, MOVEIS e ELETRO do dia
     python rodar_canal.py ES 11.09.2026 --saida C:\\temp    # grava em outra pasta
     python rodar_canal.py ELETRO 11.09.2026 --forcar         # sobrescreve
 """
@@ -19,10 +21,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "ES"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "MOVEIS"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "FULL"))
 
 import pandas as pd
 
 from rodar_es import rodar
+from rodar_full import rodar as rodar_full
 
 PASTA_AB = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB"
 RODAR_TOTVS = r"C:\RODAR TOTVS"
@@ -30,6 +34,8 @@ RODAR_TOTVS = r"C:\RODAR TOTVS"
 # ab_sub: subpasta do AB (ES: "antigo" = layout de 60 colunas); ano_no_nome:
 # a saida de MOVEIS leva o ano no nome (dd.mm.aaaa), as outras so dd.mm.
 CANAIS_PP = {
+    "FULL": dict(ab_pasta="FULL", ab_prefixo="MERCADO FULL", ab_sub="", pti=r"C:\TEMP\PTI FULL*.csv", frete=True,
+                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "FULL"), saida_prefixo="PROCESSAR_MERCADO FULL", ano_no_nome=True),
     "ES": dict(ab_pasta="COLETAS ES", ab_prefixo="MERCADO COLETAS ES", ab_sub="antigo", pti=r"C:\TEMP\PTI ES.csv", frete=True,
                saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "COLETAS ES"), saida_prefixo="PROCESSAR_MERCADO COLETAS ES", ano_no_nome=False),
     "MOVEIS": dict(ab_pasta="MOVEIS", ab_prefixo="MERCADO MOVEIS", ab_sub="", pti=r"C:\TEMP\PTI MOVEIS.csv", frete=False,
@@ -56,7 +62,10 @@ def processar(canal, data, pasta_saida=None, forcar=False):
     if os.path.exists(destino) and not forcar:
         print(f"  {canal} {data}: ja existe, nao sobrescrevi ({destino}) -- use --forcar")
         return None
-    validacao, _pag, _fr, pp = rodar(ab, c["pti"], frete=c["frete"])
+    if canal == "FULL":  # pipeline proprio (2 vendedores no PTI, modelo_ab_full)
+        validacao, _pag, _fr, pp = rodar_full(ab, c["pti"])
+    else:
+        validacao, _pag, _fr, pp = rodar(ab, c["pti"], frete=c["frete"])
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     with pd.ExcelWriter(destino) as w:
         pp.to_excel(w, sheet_name="Para Processar", index=False)
@@ -70,10 +79,15 @@ def main(argv):
     forcar = "--forcar" in argv
     pasta = argv[argv.index("--saida") + 1] if "--saida" in argv else None
     args = [a for i, a in enumerate(argv) if not a.startswith("--") and not (i and argv[i - 1] == "--saida")]
-    if len(args) < 2 or args[0].upper() not in CANAIS_PP:
-        sys.exit(f"uso: python rodar_canal.py <{'|'.join(CANAIS_PP)}> DD.MM.AAAA [DD.MM.AAAA ...] [--saida PASTA] [--forcar]")
+    if len(args) < 2 or args[0].upper() not in [*CANAIS_PP, "TODOS"]:
+        sys.exit(f"uso: python rodar_canal.py <{'|'.join(CANAIS_PP)}|TODOS> DD.MM.AAAA [DD.MM.AAAA ...] [--saida PASTA] [--forcar]")
+    canais = list(CANAIS_PP) if args[0].upper() == "TODOS" else [args[0].upper()]
     for data in args[1:]:
-        processar(args[0].upper(), data, pasta, forcar)
+        for canal in canais:
+            try:
+                processar(canal, data, pasta, forcar)
+            except FileNotFoundError as e:  # AB do canal ainda nao esta no X: -- segue com os outros
+                print(f"  {canal} {data}: sem AB ({e.filename or e})")
 
 
 def _teste():
@@ -82,6 +96,8 @@ def _teste():
     assert ab.endswith(r"MOVEIS\2026\09.2026\MERCADO MOVEIS 11.09.2026.xlsx") and nome == "PROCESSAR_MERCADO MOVEIS 11.09.2026.xlsx"
     ab, nome = caminhos("ES", "18.09.2026")
     assert ab.endswith(r"COLETAS ES\2026\09.2026\antigo\MERCADO COLETAS ES 18.09.2026.xlsx") and nome == "PROCESSAR_MERCADO COLETAS ES 18.09.xlsx"
+    ab, nome = caminhos("FULL", "11.09.2026")
+    assert ab.endswith(r"FULL\2026\09.2026\MERCADO FULL 11.09.2026.xlsx") and nome == "PROCESSAR_MERCADO FULL 11.09.2026.xlsx"
     assert caminhos("ELETRO", "04.09.2026")[1] == "MERCADO ELETRODOMESTICO 04.09.xlsx"
     print("rodar_canal.py: ok")
 
