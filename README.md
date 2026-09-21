@@ -200,6 +200,8 @@ pip install -r requirements.txt
 playwright install chromium   # login do Koncili e scraper do ML
 ```
 
+O SRI (fallback do cruzamento em `processar_full.py`) e o scraper do ML/MP usam o projeto separado **Screaper Mercado**, clonado em `Desktop\Projetos\Screaper Mercado` (`Pagina.py` e o venv com playwright). O `interativo.py --scraper` troca para o Python desse venv sozinho. `koncili.py` também precisa de `playwright`, no venv atual ou no do Screaper.
+
 Precisa de acesso à unidade `X:` (AB e empilhados) e ao TOTVS_2022 (cruzamento por SHIPPING_ID, com SRI como alternativa).
 
 ## Pendências
