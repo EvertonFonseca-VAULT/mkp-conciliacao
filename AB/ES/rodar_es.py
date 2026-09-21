@@ -47,7 +47,10 @@ def caminhos_do_dia(data):
     return caminho_ab, CAMINHO_PTI_PADRAO, saida
 
 
-def rodar(caminho_ab, caminho_pti):
+def rodar(caminho_ab, caminho_pti, frete=True):
+    """`caminho_pti=None` (ELETRO): so o cruzamento TOTVS/SRI, sem PTI/frete --
+    devolve (None, None, None, para_processar). `frete=False` (MOVEIS): roda a
+    Validacao/Pagamento mas nao lanca Frete."""
     ab = carregar_ab(caminho_ab)
     validos = filtrar_validos(marcar_flags(ab))
 
@@ -59,12 +62,14 @@ def rodar(caminho_ab, caminho_pti):
         cruzado.loc[resolvidos.index, "verificar"] = False
 
     para_processar = gerar_para_processar(cruzado)
+    if caminho_pti is None:
+        return None, None, None, para_processar
     ab_pp = montar_ab_pp(para_processar)
     pti = carregar_pti(caminho_pti)
 
     validacao = montar_validacao(ab_pp, pti)
     pagamento = montar_pagamento(validacao, ab_pp)
-    frete = montar_frete(validacao, ab_pp)
+    frete = montar_frete(validacao, ab_pp) if frete else montar_frete(validacao, ab_pp, pedidos=[])
     processar = montar_para_processar(validacao, pagamento, frete, ab_pp)
     return validacao, pagamento, frete, processar
 

@@ -35,6 +35,18 @@ API = "https://api.koncili.com"
 PASTA_AB = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB"
 COLUNAS_REPASSE = ["GROSS_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT"]
 
+# Layouts de 35 colunas (em ingles) que o X: usa em CENTER e WEB: selecao/ordem
+# das 60 do export do Koncili. WEB tem REFUND_ID, que o Koncili nao exporta
+# (a coluna sai vazia).
+_BASE_35 = ["RELEASE_DATE", "SOURCE_ID", "EXTERNAL_REFERENCE", "RECORD_TYPE", "DESCRIPTION", "NET_CREDIT_AMOUNT", "NET_DEBIT_AMOUNT",
+            "GROSS_AMOUNT", "SELLER_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT", "TAXES_AMOUNT",
+            "COUPON_AMOUNT", "INSTALLMENTS", "PAYMENT_METHOD", "TAX_DETAIL", "TAX_AMOUNT_TELCO", "APPROVAL_DATE", "POS_ID",
+            "POS_NAME", "EXTERNAL_POS_ID", "STORE_ID", "STORE_NAME", "EXTERNAL_STORE_ID"]
+COLUNAS_CENTER = _BASE_35 + ["TAXES_DISAGGREGATED", "SHIPPING_ID", "SHIPMENT_MODE", "ORDER_ID", "PACK_ID", "METADATA",
+                             "EFFECTIVE_COUPON_AMOUNT", "POI_ID", "CARD_INITIAL_NUMBER", "PRODUCT_SKU"]
+COLUNAS_WEB = _BASE_35 + ["CURRENCY", "TAXES_DISAGGREGATED", "SHIPPING_ID", "SHIPMENT_MODE", "ORDER_ID", "PACK_ID", "METADATA",
+                          "REFUND_ID", "EFFECTIVE_COUPON_AMOUNT", "POI_ID"]
+
 # conta = nome da CONTA no Koncili; pasta/prefixo = onde o AB mora no X:;
 # subpasta = "antigo" so no ES (la o layout de 60 colunas em ingles fica
 # separado do layout novo em portugues); loja = nome da LOJA no calendario.
@@ -45,12 +57,12 @@ CANAIS_KONCILI = {
     "PRIME": {"conta": "WEBCOPRIME", "pasta": "PRIME", "prefixo": "MERCADO PRIME", "subpasta": "", "loja": "PRIME"},
     # Contas descobertas casando RESULTADO x calendario (valor E dia, 11-12 dias
     # cada, 19/09/2026) -- nao pelo nome. FULL: o export do Koncili (40 colunas)
-    # e identico ao do X:, so a aba vira "Relatorio". CENTER/WEB/CO05 so
-    # conferem: o AB do X: deles esta em outro layout (35/48 colunas), e salvar
-    # o export de 60 colunas la misturaria layouts e quebraria o processar.
+    # e identico ao do X:, so a aba vira "Relatorio". CENTER/WEB: gravam no
+    # layout de 35 colunas do X:. CO05 so confere (o X: usa 48 colunas em
+    # portugues e o Everton pediu pra nao mexer nessa pasta).
     "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "aba": "Relatorio"},
-    "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "salvar": False},
-    "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "salvar": False},
+    "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "aba": "Plan1", "colunas": COLUNAS_CENTER},
+    "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "aba": "Planilha1", "colunas": COLUNAS_WEB},
     "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05", "salvar": False},
 }
 
@@ -130,6 +142,28 @@ def caminho_destino(canal, data):
     return os.path.join(*partes, f"{c['prefixo']} {data}.xlsx")
 
 
+def _ajustar_layout(caminho, c):
+    """Deixa o export do Koncili no layout do X:: renomeia a aba e, se o canal
+    tem `colunas`, mantem so essas (nessa ordem; ausente = coluna vazia).
+    Copia os valores como vieram (tipos e IDs intactos), sem passar por pandas."""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(caminho)
+    ws = wb.active
+    if c.get("colunas"):
+        linhas = ws.iter_rows(values_only=True)
+        cab = list(next(linhas))
+        pos = [cab.index(n) if n in cab else None for n in c["colunas"]]
+        novo = wb.create_sheet(c["aba"])
+        novo.append(c["colunas"])
+        for lin in linhas:
+            novo.append([None if p is None else lin[p] for p in pos])
+        wb.remove(ws)
+    else:
+        ws.title = c["aba"]
+    wb.save(caminho)
+
+
 def conferir(page, req, hdr, canal, data, salvar=False):
     c = CANAIS_KONCILI[canal]
     dia, mes, ano = data.split(".")
@@ -158,11 +192,7 @@ def conferir(page, req, hdr, canal, data, salvar=False):
         else:
             os.makedirs(os.path.dirname(destino), exist_ok=True)
             if c.get("aba"):
-                import openpyxl
-
-                wb = openpyxl.load_workbook(tmp)
-                wb.active.title = c["aba"]
-                wb.save(tmp)
+                _ajustar_layout(tmp, c)
             shutil.move(tmp, destino)  # os.replace nao atravessa unidades (C: -> X:)
             print(f"    salvo: {destino}")
     return {"repasse": rep["id"], "ab": ab, "koncili": kon, "calendario": cal, "ok_koncili": ok_kon, "ok_calendario": ok_cal}
@@ -197,6 +227,19 @@ def main(argv):
 def _teste():
     """Offline: caminhos do X: e a soma do AB (nada de rede/login)."""
     assert caminho_destino("ES", "18.09.2026").endswith(r"COLETAS ES\2026\09.2026\antigo\MERCADO COLETAS ES 18.09.2026.xlsx")
+    import openpyxl
+
+    t = os.path.join(tempfile.gettempdir(), "koncili_layout.xlsx")
+    wb = openpyxl.Workbook()
+    wb.active.append(["ZZ", "SOURCE_ID", "GROSS_AMOUNT"] + [c for c in COLUNAS_WEB if c not in ("SOURCE_ID", "GROSS_AMOUNT")][:0])
+    wb.active.append(["x", 123, 9.5])
+    wb.save(t)
+    _ajustar_layout(t, CANAIS_KONCILI["WEB"])
+    ws = openpyxl.load_workbook(t).active
+    assert ws.title == "Planilha1" and [c.value for c in ws[1]] == COLUNAS_WEB and len(COLUNAS_WEB) == 35
+    assert ws.cell(2, 2).value == 123 and ws.cell(2, 8).value == 9.5 and ws.cell(2, 33).value is None  # REFUND_ID vazio
+    os.remove(t)
+    assert len(COLUNAS_CENTER) == 35
     assert caminho_destino("MOVEIS", "11.09.2026").endswith(r"MOVEIS\2026\09.2026\MERCADO MOVEIS 11.09.2026.xlsx")
     tmp = os.path.join(tempfile.gettempdir(), "koncili_teste.xlsx")
     pd.DataFrame({"GROSS_AMOUNT": [100.0, 50.0], "MP_FEE_AMOUNT": [-10.0, -5.0], "FINANCING_FEE_AMOUNT": [-2.0, 0.0],
