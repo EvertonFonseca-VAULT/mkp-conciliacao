@@ -782,8 +782,9 @@ td.dif .v{font-size:13px;font-weight:600}
 .pedido{background:none;border:none;padding:0;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink);
   max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;text-align:left}
 .pedido:hover{color:var(--accent)}
-.nat{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
-.pilha{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+/* bloco de largura fixa: o checkbox fica sempre no mesmo x (esquerda do bloco), o numero alinha a direita */
+.nat{display:flex;align-items:center;justify-content:space-between;gap:8px;width:112px;margin-left:auto;cursor:pointer}
+.pilha{display:flex;flex-direction:column;gap:5px}
 tr.linha-feita{opacity:.45;background:var(--surface2)}
 tr.linha-feita .pedido{text-decoration:line-through}
 .vazio-fila{padding:64px 20px;text-align:center}
@@ -1142,7 +1143,7 @@ _JS = r"""
 
     var linhasMov = marcados.map(function (chk) {
       return [
-        DATA_LACTO, chk.dataset.natureza, "'" + chk.dataset.pedido, "",
+        DATA_LACTO, chk.dataset.natureza, "'" + chk.dataset.pedido, VENDEDOR,
         chk.dataset.banco, chk.dataset.agencia, chk.dataset.conta,
         chk.dataset.historico, chk.dataset.valor
       ].join("\t");
@@ -1639,7 +1640,7 @@ if __name__ == "__main__":
         # Pedido colado no CMM/MOV com apostrofo na frente -- sem isso o
         # pedido (ate 16 digitos) vira notacao cientifica ao colar no Excel.
         assert "\"'\" + chk.dataset.pedido" in conteudo
-        assert '"\'" + chk.dataset.pedido, ""' in conteudo  # linhasMov
+        assert '"\'" + chk.dataset.pedido, VENDEDOR,' in conteudo  # linhasMov: vendedor na 4a coluna, igual ao CMM
 
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
