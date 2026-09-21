@@ -27,6 +27,9 @@ def carregar_ab(caminho):
     df = df.rename(columns=PT_PARA_EN)
     if set(df.columns) == set(PT_PARA_EN.values()):
         return df
+    # 35 colunas (CENTER/WEB): subconjunto das 60 (+ REFUND_ID, vazio) -> completa o que falta.
+    if len(df.columns) < len(LAYOUT_ES) and set(df.columns) - {"REFUND_ID"} <= set(LAYOUT_ES):
+        return df.drop(columns="REFUND_ID", errors="ignore").reindex(columns=LAYOUT_ES)
     # Mesmas 60 colunas em outra ordem (export do Koncili) tambem vale: reordena.
     if len(df.columns) != len(LAYOUT_ES) or set(df.columns) != set(LAYOUT_ES):
         raise ValueError(f"Layout do Mercado COLETAS ES mudou. Esperado: {LAYOUT_ES}\nEncontrado: {list(df.columns)}")
