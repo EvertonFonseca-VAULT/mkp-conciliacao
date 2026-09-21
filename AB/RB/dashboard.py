@@ -367,6 +367,17 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
     return "".join(saida)
 
 
+def _copiavel(valor):
+    """Valor em destaque que copia com 1 clique SO os digitos, sem ponto nem
+    virgula (212.638,47 -> 21263847), pra colar direto no campo da
+    transferencia -- e o valor do historico do repasse depois de conciliado
+    (Calculado == Alvo do calendario). Pedido do Everton, 21/09/2026."""
+    digitos = f"{'-' if valor < 0 else ''}{int(round(abs(valor) * 100))}"
+    return (f'<button type="button" class="copiavel mono val grande" data-copiar="{digitos}" '
+            f'data-aviso="Copiado: {digitos}" title="Clique para copiar {digitos} (sem ponto e vírgula)">'
+            f'{_moeda(valor)}</button>')
+
+
 def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx=None, pendentes=0):
     """Faixa de status do dia (destaque maximo): veredito grande + a conta
     RB atual + Rebate (cupom) + Ajuste pendente = Calculado x Alvo, mais a
@@ -376,7 +387,7 @@ def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx
         estado, icone, rotulo = "neutro", "?", "Status do dia"
         titulo = "Sem alvo no calendário"
         texto = "Alvo não cadastrado no calendário para este canal/dia — não dá para conferir se o dia fecha."
-        alvo_txt, dif_txt = "—", "sem alvo"
+        alvo_txt, dif_txt = '<span class="mono val grande">—</span>', "sem alvo"
     else:
         diferenca = round(alvo - calculado, 2) + 0.0  # sem "−R$ 0,00" por ruido de ponto flutuante
         bate = abs(diferenca) < TOLERANCIA_ALVO
@@ -391,7 +402,7 @@ def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx
                      + (" Falta ajustar os pedidos da fila VERIFICAR." if pendentes else ""))
         else:
             texto = "RB atual, rebate e ajuste pendente não fecham com o alvo do calendário. Confira a fila VERIFICAR e o rebate."
-        alvo_txt, dif_txt = _moeda(alvo), _moeda(diferenca)
+        alvo_txt, dif_txt = _copiavel(alvo), _moeda(diferenca)
 
     rebate_html = ""
     if conferencia_rbx:
@@ -422,9 +433,9 @@ def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx
           <span class="mono sinal">+</span>
           <div class="op"><span class="rot">Ajuste pendente</span><span class="mono val" title="Soma dos DIF da fila VERIFICAR">{_moeda(ajuste_pendente)}</span></div>
           <span class="mono sinal">=</span>
-          <div class="op"><span class="rot">Calculado</span><span class="mono val grande">{_moeda(calculado)}</span></div>
+          <div class="op"><span class="rot">Calculado</span>{_copiavel(calculado)}</div>
           <div class="divisor"></div>
-          <div class="op"><span class="rot">Alvo (calendário)</span><span class="mono val grande">{alvo_txt}</span></div>
+          <div class="op"><span class="rot">Alvo (calendário)</span>{alvo_txt}</div>
           <div class="dif-badge"><span class="dot"></span><span>dif. {dif_txt}</span></div>
         </div>
         {rebate_html}
@@ -715,6 +726,9 @@ h1{margin:0;font:600 24px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.015em}
 .op .val{font-size:17px;font-weight:500;line-height:1}
 .op .val.grande{font-size:19px;font-weight:600}
 .sinal{font:400 16px/1.6 'IBM Plex Mono',monospace;color:var(--ink3)}
+/* Alvo e Calculado: 1 clique copia so os digitos (sem ponto/virgula) pra colar na transferencia */
+.copiavel{background:none;border:none;border-bottom:1px dotted var(--ink3);padding:0 0 2px;color:var(--ink);cursor:pointer;text-align:left}
+.copiavel:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .divisor{width:1px;height:38px;background:var(--line);margin:0 4px}
 .dif-badge{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;background:var(--cbg);border:1px solid var(--cline);font:500 12px/1 'IBM Plex Sans',sans-serif;color:var(--c)}
 .dif-badge .dot{margin:0;background:var(--c)}
@@ -945,7 +959,7 @@ _JS = r"""
   // pedido / rotulos do historico TOTVS: 1 clique copia
   document.querySelectorAll("[data-copiar]").forEach(function (b) {
     b.addEventListener("click", function () {
-      copiar(b.dataset.copiar);
+      copiar(b.dataset.copiar, b.dataset.aviso);
       if (b.classList.contains("hist")) {
         b.classList.add("copiado");
         setTimeout(function () { b.classList.remove("copiado"); }, 1600);
@@ -1366,6 +1380,10 @@ if __name__ == "__main__":
     # formatacao: menos tipografico (U+2212), milhar com ponto, decimal com virgula
     assert _numero_br(-1234.5) == "−1.234,50" and _moeda(-921.84) == "−R$ 921,84"
     assert _formatar_numero(-25.5) == "-25,50"  # pro CMM/MOV o hifen e ASCII
+    # Alvo/Calculado copiam so os digitos, sem ponto nem virgula (pra transferencia)
+    assert 'data-copiar="21263847"' in _copiavel(212638.47) and "R$ 212.638,47" in _copiavel(212638.47)
+    assert 'data-copiar="-73184"' in _copiavel(-731.84) and 'data-copiar="5"' in _copiavel(0.05)
+    assert 'data-copiar="10"' in _copiavel(0.1) and 'data-copiar="0"' in _copiavel(0.0)
 
     # Split Frete/Tarifa de cobranca (pedido isolado, sem passar pelo resto
     # do dashboard): ML_ENVIO=-30 x ML_CUSTO_ENVIO=-22 -> tarifa=-8, tem que
@@ -1664,6 +1682,9 @@ if __name__ == "__main__":
         conteudo2 = open(caminho2, encoding="utf-8").read()
         assert "Bate com o calendário ✓" in conteudo2 and "dif. R$ 0,00" in conteudo2
         assert "Falta ajustar os pedidos da fila VERIFICAR." in conteudo2  # ainda ha 1 pedido na fila
+        # Alvo e Calculado (iguais quando bate) copiam so os digitos, e o aviso do toast mostra o que foi copiado
+        assert conteudo2.count('data-copiar="-73184"') == 2 and 'data-aviso="Copiado: -73184"' in conteudo2
+        assert "copiar(b.dataset.copiar, b.dataset.aviso);" in conteudo2
         assert "Dia fechado" not in conteudo2 and "Diferença de" not in conteudo2
         assert "pronta para transferência" in conteudo2 and 'class="pill accent"' in conteudo2
         # Historico TOTVS: 4 rotulos copiaveis (Raiz/Repasse/Comissao/Frete)
