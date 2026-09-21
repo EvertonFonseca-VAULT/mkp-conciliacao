@@ -11,9 +11,14 @@ Este passo so MONTA as linhas do dia e confere a soma de VALOR contra o
 calendario -- nao grava nada no empilhado. Guarda cada dia num pickle (cache)
 pra a gravacao usar depois.
 
-Uso:
-    python empilhar.py ensaio FULL 11.09.2026 14.09.2026 ...
-    python empilhar.py --teste
+Uso (o dia a dia):
+    python empilhar.py FULL 22.09.2026                       # monta, confere e grava LOCAL (nada muda no X:)
+    python empilhar.py FULL 22.09.2026 23.09.2026 --publicar # idem e troca o empilhado do X: (com backup)
+    python empilhar.py ES 22.09.2026 --publicar
+Antes: o AB do dia no X: (python koncili.py FULL 22.09.2026 --salvar). Rodar de novo com um
+dia que ja esta no empilhado nao duplica nada.
+
+Partes: `python empilhar.py ensaio FULL 11.09.2026 ...` (so monta e confere) e `python empilhar.py --teste`.
 """
 
 import os
@@ -126,5 +131,11 @@ if __name__ == "__main__":
         _teste()
     elif len(sys.argv) > 3 and sys.argv[1] == "ensaio" and sys.argv[2].upper() in CARREGAR_AB:
         ensaio(sys.argv[2].upper(), sys.argv[3:])
+    elif len(sys.argv) > 2 and sys.argv[1].upper() in CARREGAR_AB:
+        canal, datas = sys.argv[1].upper(), [a for a in sys.argv[2:] if not a.startswith("--")]
+        ensaio(canal, datas)
+        import empilhar_gravar
+
+        empilhar_gravar.main([canal] + (["--publicar"] if "--publicar" in sys.argv else []), datas)
     else:
-        sys.exit("uso: python empilhar.py ensaio <FULL|ES> DD.MM.AAAA [...]  |  python empilhar.py --teste")
+        sys.exit("uso: python empilhar.py <FULL|ES> DD.MM.AAAA [...] [--publicar]  |  python empilhar.py --teste")

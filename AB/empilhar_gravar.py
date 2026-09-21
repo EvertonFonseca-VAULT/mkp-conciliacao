@@ -94,8 +94,10 @@ def _corrigir_linha(m, sufixo):
     return re.sub(r'(<c r="Y%d"[^>]*>(?:<f[^>]*/>|<f[^>]*>[^<]*</f>))<v>[^<]*</v>' % n, r"\g<1><v>%d_%s</v>" % (n - 1, sufixo), t)
 
 
-def montar(canal, atual, saida):
-    """Le `atual` (copia do empilhado) e grava `saida` com as linhas novas. Devolve um resumo."""
+def montar(canal, atual, saida, datas=None):
+    """Le `atual` (copia do empilhado) e grava `saida` com as linhas novas. Devolve um resumo.
+    `datas` (DD.MM.AAAA) limita os dias do cache; dias que ja estao no empilhado sao pulados
+    (rodar de novo nao duplica nada)."""
     z = zipfile.ZipFile(atual)
     base_p, cal_p, tab_p = _partes(z)
     sx = z.read(base_p).decode("utf-8")
@@ -119,7 +121,16 @@ def montar(canal, atual, saida):
     f_w, f_y = _formula(sx, "W%d" % ult), _formula(sx, "Y%d" % ult)
     attrs = re.search(r'<row r="%d"([^>]*)>' % ult, sx).group(1)
     arqs = sorted(glob.glob(os.path.join(CACHE, "%s_*.pkl" % canal)), key=lambda p: datetime.datetime.strptime(p[-14:-4], "%d.%m.%Y"))
-    dias = [pickle.load(open(p, "rb")) for p in arqs]
+    if datas:
+        arqs = [p for p in arqs if p[-14:-4] in datas]
+    ja_gravado = {int(v) for v in re.findall(r'<c r="A\d+" s="\d+"><v>(\d+)</v>', sx)}       # DATA_REPASSE que ja esta na Base
+    dias, pulados = [], []
+    for p in arqs:
+        df = pickle.load(open(p, "rb"))
+        (pulados if _serial(df["DATA_REPASSE"].iloc[0].date()) in ja_gravado else dias).append(df)
+    pulados = [d["DATA_REPASSE"].iloc[0].strftime("%d/%m") for d in pulados]
+    if not dias:
+        return dict(linhas_novas=0, ja_gravados=pulados, base=base_p)
     novas, r, soma_w = [], ult, []
     for df in dias:
         soma_dia = 0.0
@@ -202,7 +213,7 @@ def montar(canal, atual, saida):
             if item.filename != "xl/calcChain.xml":
                 out.writestr(item.filename, troca[item.filename].encode("utf-8") if item.filename in troca else z.read(item.filename))
     return dict(linhas_novas=len(novas), primeira_nova=ult + 1, ultima_linha=nova_ult, seq_corrigidas=len(ruins),
-                cal_novas=len(cal_novas), ultima_cal=fim_cal, sem_calendario=sem_cal, dias=len(dias), base=base_p)
+                cal_novas=len(cal_novas), ultima_cal=fim_cal, sem_calendario=sem_cal, dias=len(dias), ja_gravados=pulados, base=base_p)
 
 
 def conferir(canal, novo, resumo):
@@ -242,7 +253,7 @@ def conferir(canal, novo, resumo):
     return out
 
 
-def main(argv):
+def main(argv, datas=None):
     canal = argv[0].upper()
     publicar = "--publicar" in argv
     origem = os.path.join(PASTA_EMPILHADO, ARQUIVO[canal])
@@ -257,8 +268,11 @@ def main(argv):
         print("backup novo:", datado)
     novo = os.path.join(PASTA_BACKUP, "_novo_%s.xlsx" % canal)
     print("montando arquivo novo...", flush=True)
-    resumo = montar(canal, atual, novo)
+    resumo = montar(canal, atual, novo, datas)
     print("resumo:", {k: v for k, v in resumo.items() if k != "base"}, flush=True)
+    if resumo["linhas_novas"] == 0:
+        print("Nada novo pra gravar (os dias ja estao no empilhado ou nao ha dias no cache). Nada foi trocado.")
+        return
     print("conferindo (le o arquivo novo de volta)...", flush=True)
     for d, v, eb in conferir(canal, novo, resumo):
         print("   %s  soma VALOR %14s  calendario %s" % (d.strftime("%d/%m"), format(v, ",.2f"), "sem linha" if eb is None else "OK"))
@@ -271,6 +285,11 @@ def main(argv):
     shutil.copy2(novo, tmp)
     os.replace(tmp, origem)
     print("PUBLICADO:", origem)
+    feito = os.path.join(CACHE, "publicado")                 # o cache do que ja foi gravado sai do caminho
+    os.makedirs(feito, exist_ok=True)
+    for p in glob.glob(os.path.join(CACHE, "%s_*.pkl" % canal)):
+        if not datas or p[-14:-4] in datas:
+            shutil.move(p, os.path.join(feito, os.path.basename(p)))
 
 
 if __name__ == "__main__":
