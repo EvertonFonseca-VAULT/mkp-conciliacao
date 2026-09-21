@@ -354,7 +354,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
               {cel_rb}
               {cel_diferenca}
               {cel_ab_total}
-              <td class="ped"><button type="button" class="pedido" data-copiar="'{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
+              <td class="ped"><button type="button" class="pedido" data-copiar="{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
               {cel_descricao}
               <td class="num dif" title="{dica_dif}">{_valor_html(dif)}</td>
               {cel_marcacao}
@@ -999,8 +999,9 @@ _JS = r"""
   atualizarResumo();
 
   // Copiar da tabela pro Excel: no tema escuro o texto copiado vinha claro
-  // (invisivel no Excel branco) -- entrega TSV puro, com apostrofo no pedido
-  // (senao 16 digitos viram notacao cientifica).
+  // (invisivel no Excel branco) -- entrega TSV puro. O pedido da fila sai SEM
+  // apostrofo (pedido do Everton, 21/09/2026: o apostrofo so vale nas linhas
+  // de CMM e MOV, la ele continua).
   document.addEventListener("copy", function (e) {
     var tabela = document.getElementById("tabela-verificar");
     var sel = window.getSelection();
@@ -1009,8 +1010,7 @@ _JS = r"""
     tabela.querySelectorAll("tbody tr").forEach(function (tr) {
       if (!sel.containsNode(tr, true)) return;
       linhas.push(Array.prototype.map.call(tr.cells, function (td) {
-        var t = td.innerText.replace(/\s+/g, " ").trim();
-        return td.querySelector(".pedido") ? "'" + t : t;
+        return td.innerText.replace(/\s+/g, " ").trim();
       }).join("\t"));
     });
     if (!linhas.length) return;
@@ -1408,7 +1408,7 @@ if __name__ == "__main__":
     assert 'data-historico="MKP_ME_FULL_TARIFA DE COBRANÇA"' in linhas_split
     assert 'data-valor="-8,00"' in linhas_split
     assert 'class="pilha"' in linhas_split  # 2 fretes empilhados na mesma celula
-    assert 'data-copiar="\'4"' in linhas_split  # pedido copia com apostrofo
+    assert 'data-copiar="4"' in linhas_split and 'data-copiar="\'4"' not in linhas_split  # fila: pedido SEM apostrofo
 
     # Diferenca extrato: quando o pedido JA tem TOTAL_RB != 0 (achado no
     # cruzamento inicial contra CONCILIADOR_RB.xlsx, ver cruzamento.py),
