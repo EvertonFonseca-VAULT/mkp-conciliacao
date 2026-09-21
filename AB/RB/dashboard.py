@@ -354,7 +354,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
               {cel_rb}
               {cel_diferenca}
               {cel_ab_total}
-              <td class="ped"><button type="button" class="pedido" data-copiar="'{pedido}" title="Copiar pedido">{pedido}</button></td>
+              <td class="ped"><button type="button" class="pedido" data-copiar="'{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
               {cel_descricao}
               <td class="num dif" title="{dica_dif}">{_valor_html(dif)}</td>
               {cel_marcacao}
@@ -479,8 +479,9 @@ def _fluxo_original_transitoria(conf, alvo):
         elif conf["pronta_para_transferencia"]:
             pill3 = '<span class="pill accent"><span class="dot"></span>pronta para transferência</span>'
         elif alvo is not None:
-            faltam = _moeda(alvo - conf["valor_transferencia"])
-            pill3 = f'<span class="pill warn"><span class="dot"></span>acumulando (faltam {faltam})</span>'
+            resta = round(alvo - conf["valor_transferencia"], 2)
+            texto = f"acumulando (faltam {_moeda(resta)})" if resta >= 0 else f"acima do alvo em {_moeda(-resta)}"
+            pill3 = f'<span class="pill warn"><span class="dot"></span>{texto}</span>'
         else:
             pill3 = '<span class="pill neutro"><span class="dot"></span>sem alvo do calendário pra comparar</span>'
 
@@ -772,7 +773,8 @@ td.ped{text-align:left}
 .v.nao-achado{color:var(--warn)}
 td.dif .v{font-size:13px;font-weight:600}
 .vazio{color:var(--ink3)}
-.pedido{background:none;border:none;padding:0;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink)}
+.pedido{background:none;border:none;padding:0;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink);
+  max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;text-align:left}
 .pedido:hover{color:var(--accent)}
 .nat{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
 .pilha{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
@@ -1706,6 +1708,18 @@ if __name__ == "__main__":
         # alerta vermelho de VERIFICAR removido (18/09/2026) -- so a propria
         # fila VERIFICAR mostra isso agora, sem banner duplicado.
         assert "pedido(s) em VERIFICAR" not in conteudo3
+
+        # Transitoria ACIMA do alvo (ex. real FULL 11/09/2026: 241.195,38 x 212.638,47):
+        # nao pode virar "faltam -R$ ..." -- diz que passou.
+        conferencia_rbx_acima = {**conferencia_rbx, "liquido_transitoria_simulado": 10.0, "valor_transferencia": 10.0}
+        caminho_acima = gerar_dashboard(
+            resultado, fila, rebate_cmm, canal="FULL", data="01.01",
+            data_ref_rb="01/01/2026", caminho_xlsx_completo="a.xlsx",
+            caminho_xlsx_rebate="b.xlsx", pasta_saida=tmp, alvo=0.0,
+            conferencia_rbx=conferencia_rbx_acima,
+        )
+        conteudo_acima = open(caminho_acima, encoding="utf-8").read()
+        assert f"acima do alvo em {_moeda(10.0)}" in conteudo_acima and "faltam −" not in conteudo_acima
 
         # Cancelamento na Original (cenario real do FULL 09/09/2026, ver
         # conferir_rbx.py): Transitoria bruta (218490.47) excede o alvo
