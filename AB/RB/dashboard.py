@@ -113,7 +113,7 @@ def _moeda(valor):
 def _formatar_numero(valor):
     """Numero pro CMM/MOV (data-valor): virgula decimal, sem milhar, hifen ASCII."""
     neg = valor < 0
-    numero = f"{abs(valor):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    numero = f"{abs(valor):.2f}".replace(".", ",")  # sem separador de milhar (o doc ja dizia, o codigo nao fazia)
     return f"{'-' if neg else ''}{numero}"
 
 
@@ -133,6 +133,21 @@ def _valor_ou_vazio(v):
     """Celula em branco (sem "—") quando nao tem valor -- usado onde o "—" so
     poluiria (RBX/RB: a celula vazia ja diz "nao achei nada la")."""
     return "" if _nulo(v) else _valor_html(v)
+
+
+def _valor_copia(v, absoluto=False, dica=None):
+    """Valor que copia com 1 clique no formato do TOTVS (virgula decimal, sem
+    milhar: 1234,56) -- BANCO, Frete e Comissao da fila, pra lancar na nota.
+    `absoluto=True` mostra e copia o modulo (Frete com DIF positiva: o valor
+    vai pra nota, entao sem o sinal de debito). Pedido do Everton, 21/09/2026."""
+    if _nulo(v):
+        return '<span class="vazio">—</span>'
+    exibido = abs(v) if absoluto else v
+    texto = _formatar_numero(exibido)
+    classe = "abs" if absoluto else ("neg" if v < 0 else ("pos" if v > 0 else "zero"))
+    titulo = (f"{dica}\n" if dica else "") + f"Clique para copiar {texto}"
+    return (f'<span class="v {classe} cp" data-copiar="{texto}" data-aviso="Copiado: {texto}" '
+            f'title="{html.escape(titulo)}">{_numero_br(exibido)}</span>')
 
 
 # ---------------------------------------------------------------------------
@@ -164,14 +179,16 @@ def _td(conteudo, classe="num", detalhe=None):
     return f'<td class="{classe}">{conteudo}</td>'
 
 
-def _conteudo_natureza(valor, pedido, motivo, natureza, conta, historico):
+def _conteudo_natureza(valor, pedido, motivo, natureza, conta, historico, absoluto=False):
     """Checkbox + valor de 1 marcacao de NATUREZA, sem o <td> em volta --
     normalmente 1 por celula, mas a coluna Frete pode precisar de 2 na MESMA
     celula quando o pedido tem custo de envio e tarifa de cobranca separados
     (ver _linhas_tabela). Checkbox so quando o valor existe e e != 0; cada
-    valor e um <label> (clicar no numero marca). Pedido do Everton,
-    17/09/2026."""
-    valor_html = _valor_ou_vazio(valor)
+    valor e um <label>; clicar no NUMERO copia (ver _valor_copia), o checkbox
+    marca. `absoluto` so muda o que aparece/copia (Frete com DIF positiva);
+    o data-valor que vai pro CMM/MOV continua com o sinal certo. Pedido do
+    Everton, 17/09/2026."""
+    valor_html = "" if _nulo(valor) else _valor_copia(valor, absoluto)
     if not valor_html or not valor:  # "" (None/NaN) e 0 nao geram checkbox
         return valor_html
     return (
@@ -263,7 +280,10 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         # separadas, a celula Frete ganha 2 valores empilhados, cada um com
         # seu checkbox (custo de envio + tarifa); quando so tem 1 (ou
         # nenhuma), continua com 1 so.
-        cel_comissao = _td(_valor_html(comissao), detalhe=row.get('ML_COMISSAO_DETALHE'))
+        cel_comissao = _td(_valor_copia(comissao), detalhe=row.get('ML_COMISSAO_DETALHE'))
+        # DIF positiva: Frete/tarifa aparecem em ABSOLUTO (o Everton copia o
+        # valor e lanca na nota); DIF negativa continua com o sinal.
+        frete_absoluto = dif > 0
         cel_desconto = _td(_valor_html(row.get('ML_DESCONTO_BONUS')), detalhe=row.get('ML_DESCONTO_BONUS_DETALHE'))
         tarifa_cobranca = None
         if not _nulo(frete) and not _nulo(custo_envio) and round(frete - custo_envio, 2) != 0:
@@ -272,14 +292,14 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
             conteudo_envio = (
                 '<div class="pilha">'
                 + _conteudo_natureza(custo_envio, pedido, MOTIVO_FRETE, NATUREZA_FRETE,
-                                     CONTA_TRANSITORIA, historicos.get("frete", ""))
+                                     CONTA_TRANSITORIA, historicos.get("frete", ""), frete_absoluto)
                 + _conteudo_natureza(tarifa_cobranca, pedido, MOTIVO_COMISSAO, NATUREZA_COMISSAO,
-                                     CONTA_TRANSITORIA, historicos.get("comissao", ""))
+                                     CONTA_TRANSITORIA, historicos.get("comissao", ""), frete_absoluto)
                 + "</div>"
             )
         else:
             conteudo_envio = _conteudo_natureza(frete, pedido, MOTIVO_FRETE, NATUREZA_FRETE,
-                                                CONTA_TRANSITORIA, historicos.get("frete", ""))
+                                                CONTA_TRANSITORIA, historicos.get("frete", ""), frete_absoluto)
         cel_envio = _td(conteudo_envio or _valor_html(None), detalhe=row.get('ML_ENVIO_DETALHE'))
         conteudo_rebate = _conteudo_natureza(row.get('ML_REBATE'), pedido, MOTIVO_REBATE, NATUREZA_REBATE,
                                              CONTA_TRANSITORIA, historicos.get("rebate", ""))
@@ -330,6 +350,13 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         else:
             cor, dica = _bolinha(v_rb, v_rbx, diferenca_extrato)
             cel_diferenca = f'<td class="num" title="{dica}">{_valor_html(diferenca_extrato)}<span class="dot {cor}"></span></td>'
+        # BANCO = RBX + DIF: quando a DIF e positiva e o pedido ja tem valor
+        # lancado, o Everton cancela essa baixa e relanca o valor do RBX +
+        # a diferenca -- essa coluna ja traz a soma (e copia com 1 clique).
+        # Sem RBX (None) e so a DIF. Pedido do Everton, 21/09/2026.
+        banco = round((v_rbx or 0) + dif, 2)
+        dica_banco = f"BANCO = RBX + DIF\nRBX {_formatar_numero(v_rbx or 0)} + DIF {_formatar_numero(dif)}"
+        cel_banco = f'<td class="num banco">{_valor_copia(banco, dica=dica_banco)}</td>'
         # AB total (TOTAL_PED = REPASSE+COMISSAO+FRETE, ver cruzamento.py)
         # -- do lado de RBX/RB/Diferenca extrato, pro Everton comparar
         # direto o que o banco tem (RBX/RB) com o que o AB/ML diz que
@@ -357,6 +384,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
               <td class="ped"><button type="button" class="pedido" data-copiar="{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
               {cel_descricao}
               <td class="num dif" title="{dica_dif}">{_valor_html(dif)}</td>
+              {cel_banco}
               {cel_marcacao}
               {cel_comissao}
               {cel_desconto}
@@ -791,7 +819,10 @@ td.ped{text-align:left}
 .v{font-size:12.5px;font-variant-numeric:tabular-nums}
 .v.pos{color:var(--ok)}.v.neg{color:var(--bad)}.v.zero{color:var(--ink2)}
 .v.nao-achado{color:var(--warn)}
-td.dif .v{font-size:13px;font-weight:600}
+td.dif .v,td.banco .v{font-size:13px;font-weight:600}
+.v.abs{color:var(--ink)}                         /* Frete absoluto (DIF positiva): valor pra nota, sem cor de debito */
+.v.cp{cursor:pointer}
+.v.cp:hover{color:var(--accent)}
 .vazio{color:var(--ink3)}
 .pedido{background:none;border:none;padding:0;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink);
   max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;text-align:left}
@@ -958,7 +989,8 @@ _JS = r"""
 
   // pedido / rotulos do historico TOTVS: 1 clique copia
   document.querySelectorAll("[data-copiar]").forEach(function (b) {
-    b.addEventListener("click", function () {
+    b.addEventListener("click", function (e) {
+      e.preventDefault();  // numero dentro do <label> do checkbox: copia, nao marca
       copiar(b.dataset.copiar, b.dataset.aviso);
       if (b.classList.contains("hist")) {
         b.classList.add("copiado");
@@ -1281,7 +1313,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
         <table id="tabela-verificar">
           <thead><tr>
             <th class="c-chk" title="Ajustado">Aj.</th><th>RBX</th><th>RB</th><th>Dif. extrato</th><th>AB total</th>
-            <th class="esq">Pedido</th><th class="esq">Descrição</th><th>DIF</th>{colunas_extra}
+            <th class="esq">Pedido</th><th class="esq">Descrição</th><th>DIF</th><th title="RBX + DIF: valor a lançar no banco">Banco</th>{colunas_extra}
             <th>Comissão</th><th>Desc/Bônus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
           </tr></thead>
           <tbody>{_linhas_tabela(fila_verificar, conferencia_rbx, historicos, valores_pedidos)}</tbody>
@@ -1399,7 +1431,7 @@ if __name__ == "__main__":
         historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO",
                     "comissao": "MKP_ME_FULL_TARIFA DE COBRANÇA"},
     )
-    assert linhas_split.count("<td") == 13
+    assert linhas_split.count("<td") == 14  # 13 de antes + BANCO
     assert ('data-motivo="DESPESAS DE FRETE ENVIO" data-natureza="2209" '
             'data-conta="X103925"') in linhas_split
     assert 'data-valor="-22,00"' in linhas_split
@@ -1457,6 +1489,36 @@ if __name__ == "__main__":
     )
     assert _valor_html(0.0) in linhas_novo
     assert '<span class="dot ok"></span>' in linhas_novo  # verde: fechou
+
+    # BANCO = RBX + DIF (pedido 9: RBX 1911.43 + DIF 371.65 = 2283.08): valor pra
+    # cancelar a baixa antiga e relancar; copia no formato do TOTVS (virgula, sem milhar).
+    assert 'class="num banco"' in linhas_duplicado and 'data-copiar="2283,08"' in linhas_duplicado
+    assert "BANCO = RBX + DIF" in linhas_duplicado
+    # Sem RBX (None) o BANCO e so a DIF.
+    assert 'data-copiar="41,98"' in _linhas_tabela(
+        pd.DataFrame({"PEDIDO_MKP": ["5"], "DIF": [41.98], "ML_ENVIO": [0.0], "ML_REBATE": [0.0]}))
+    # DIF positiva: Frete aparece e copia em ABSOLUTO (vai pra nota); o data-valor que vai pro
+    # CMM/MOV continua com o sinal de debito. DIF negativa: Frete continua com o sinal.
+    linhas_pos = _linhas_tabela(
+        pd.DataFrame({"PEDIDO_MKP": ["5"], "DIF": [41.98], "ML_ENVIO": [-69.35], "ML_REBATE": [0.0]}),
+        historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO"},
+    )
+    assert 'class="v abs cp" data-copiar="69,35"' in linhas_pos and 'data-valor="-69,35"' in linhas_pos
+    linhas_neg = _linhas_tabela(
+        pd.DataFrame({"PEDIDO_MKP": ["6"], "DIF": [-41.98], "ML_ENVIO": [-69.35], "ML_REBATE": [0.0]}),
+        historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO"},
+    )
+    assert 'class="v neg cp" data-copiar="-69,35"' in linhas_neg and 'class="v abs' not in linhas_neg
+    # Split (custo de envio + tarifa) com DIF positiva: os 2 valores em absoluto
+    linhas_split_pos = _linhas_tabela(
+        pd.DataFrame({"PEDIDO_MKP": ["4"], "DIF": [50.0], "ML_ENVIO": [-30.0], "ML_CUSTO_ENVIO": [-22.0], "ML_REBATE": [0.0]}),
+        historicos={"frete": "F", "comissao": "C"},
+    )
+    assert 'data-copiar="22,00"' in linhas_split_pos and 'data-copiar="8,00"' in linhas_split_pos
+    assert 'data-valor="-22,00"' in linhas_split_pos and 'data-valor="-8,00"' in linhas_split_pos
+    # Comissao tambem copia
+    assert 'data-copiar="176,97"' in _linhas_tabela(
+        pd.DataFrame({"PEDIDO_MKP": ["7"], "DIF": [10.0], "ML_COMISSAO_LIQUIDA": [176.97], "ML_ENVIO": [0.0], "ML_REBATE": [0.0]}))
 
     # Pedido nao encontrado nem no RB nem no RBX: "n/e" + bolinha ambar.
     linhas_ne = _linhas_tabela(
@@ -1663,7 +1725,7 @@ if __name__ == "__main__":
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
         linha3 = conteudo.split('<tr data-pedido="3"')[1].split("</tr>")[0]
-        assert linha3.count("<td") == 13
+        assert linha3.count("<td") == 14  # 13 de antes + BANCO
         assert linha3.count('class="chk-natureza"') == 2  # so Frete + Rebate
         assert '<td class="desc">mediation, refund</td>' in linha3  # coluna Descricao (AB)
 
@@ -1834,7 +1896,7 @@ if __name__ == "__main__":
             # gerado certo pro FULL, igual ja confirmado pro Frete/Rebate.
             assert 'var PREFIXO_MOV = "MKP_ME_FULL";' in conteudo_extra
             linha3_extra = conteudo_extra.split('<tr data-pedido="3"')[1].split("</tr>")[0]
-            assert linha3_extra.count("<td") == 14  # 13 de sempre (com AB total) + Marcacao
+            assert linha3_extra.count("<td") == 15  # 14 de sempre (com AB total e BANCO) + Marcacao
             assert 'sel-natureza-extra' in linha3_extra
             # JS: select entra na mesma lista que os checkboxes (mesmo
             # formato chk.dataset.*) e persiste em localStorage por pedido.
