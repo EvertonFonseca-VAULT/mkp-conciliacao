@@ -367,7 +367,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
     return "".join(saida)
 
 
-def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx=None):
+def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx=None, pendentes=0):
     """Faixa de status do dia (destaque maximo): veredito grande + a conta
     RB atual + Rebate (cupom) + Ajuste pendente = Calculado x Alvo, mais a
     conferencia do Rebate (formula x RBX) quando ha rb.xlsx/rbx.xlsx."""
@@ -382,9 +382,15 @@ def _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx
         bate = abs(diferenca) < TOLERANCIA_ALVO
         estado = "ok" if bate else "bad"
         icone, rotulo = ("✓", "Status do dia") if bate else ("!", "Status do dia")
-        titulo = "Dia fechado ✓" if bate else f"Diferença de {_moeda(abs(diferenca))}"
-        texto = ("RB atual, rebate e ajuste pendente fecham com o calendário do dia." if bate else
-                 "RB atual, rebate e ajuste pendente não fecham com o alvo do calendário. Confira a fila VERIFICAR e o rebate.")
+        # O veredito e sobre o CALENDARIO (nao "dia fechado": com pedidos ainda
+        # na fila VERIFICAR o dia nao esta fechado, so a conta ja bate com o
+        # alvo). Pedido do Everton, 21/09/2026.
+        titulo = "Bate com o calendário ✓" if bate else f"Diferença de {_moeda(abs(diferenca))} para o calendário"
+        if bate:
+            texto = ("RB atual, rebate e ajuste pendente fecham com o alvo do calendário."
+                     + (" Falta ajustar os pedidos da fila VERIFICAR." if pendentes else ""))
+        else:
+            texto = "RB atual, rebate e ajuste pendente não fecham com o alvo do calendário. Confira a fila VERIFICAR e o rebate."
         alvo_txt, dif_txt = _moeda(alvo), _moeda(diferenca)
 
     rebate_html = ""
@@ -1244,7 +1250,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
     verificar_qtd = len(fila_verificar)
     em_jogo = float(fila_verificar["DIF"].abs().sum()) if verificar_qtd else 0.0
 
-    faixa_html = _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx)
+    faixa_html = _faixa_status(alvo, rb_total, rebate_total, ajuste_pendente, conferencia_rbx, verificar_qtd)
     fluxo_html = _fluxo_original_transitoria(conferencia_rbx, alvo) if conferencia_rbx else ""
     historico_html = (
         '<section class="card historico"><div class="card-topo"><h2>Histórico TOTVS</h2>'
@@ -1655,8 +1661,9 @@ if __name__ == "__main__":
         )
         assert caminho2 == caminho  # mesmo arquivo, sobrescrito (mesmo dia)
         conteudo2 = open(caminho2, encoding="utf-8").read()
-        assert "Dia fechado ✓" in conteudo2 and "dif. R$ 0,00" in conteudo2
-        assert "Diferença de" not in conteudo2
+        assert "Bate com o calendário ✓" in conteudo2 and "dif. R$ 0,00" in conteudo2
+        assert "Falta ajustar os pedidos da fila VERIFICAR." in conteudo2  # ainda ha 1 pedido na fila
+        assert "Dia fechado" not in conteudo2 and "Diferença de" not in conteudo2
         assert "pronta para transferência" in conteudo2 and 'class="pill accent"' in conteudo2
         # Historico TOTVS: 4 rotulos copiaveis (Raiz/Repasse/Comissao/Frete)
         assert "Histórico TOTVS" in conteudo2
@@ -1694,7 +1701,7 @@ if __name__ == "__main__":
             conferencia_rbx=conferencia_rbx_acumulando,
         )
         conteudo3 = open(caminho3, encoding="utf-8").read()
-        assert "Diferença de R$ 731,84" in conteudo3 and 'class="card faixa bad"' in conteudo3
+        assert "Diferença de R$ 731,84 para o calendário" in conteudo3 and 'class="card faixa bad"' in conteudo3
         assert f"acumulando (faltam {_moeda(7.0)})" in conteudo3 and 'class="pill warn"' in conteudo3
         assert "Valores do Mercado Livre atualizados" in conteudo3
         # aviso "Scraper pronto" removido (18/09/2026) -- caminho_bat_scraper
@@ -1772,7 +1779,8 @@ if __name__ == "__main__":
         )
         conteudo_fechado = open(caminho_fechado, encoding="utf-8").read()
         assert "Nenhum pedido em VERIFICAR 🎉" in conteudo_fechado
-        assert "Dia fechado ✓" in conteudo_fechado and 'class="card faixa ok"' in conteudo_fechado
+        assert "Bate com o calendário ✓" in conteudo_fechado and 'class="card faixa ok"' in conteudo_fechado
+        assert "Falta ajustar" not in conteudo_fechado  # fila vazia: nada a ajustar
         assert 'id="tabela-verificar"' not in conteudo_fechado
 
         # Marcacao extra na fila VERIFICAR (Mediacao/Cashback/etc, ver
