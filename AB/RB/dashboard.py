@@ -175,7 +175,7 @@ def _conteudo_natureza(valor, pedido, motivo, natureza, conta, historico):
     if not valor_html or not valor:  # "" (None/NaN) e 0 nao geram checkbox
         return valor_html
     return (
-        f'<label class="nat" title="Marcar: {html.escape(motivo)} (vai pro CMM/MOV)">'
+        f'<label class="nat" title="{html.escape(motivo)} (vai pro CMM/MOV)">'
         '<input type="checkbox" class="chk-natureza" '
         f'data-pedido="{pedido}" data-motivo="{html.escape(motivo)}" '
         f'data-natureza="{natureza}" data-conta="{conta}" '
