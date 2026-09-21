@@ -17,6 +17,8 @@ TOTVS). GROSS_AMOUNT/MP_FEE_AMOUNT batem 183/184 — 1 pedido no arquivo
 real quebra o próprio padrão dele (isolado, não afeta o valor líquido).
 """
 
+import glob
+
 import pandas as pd
 
 
@@ -33,8 +35,11 @@ def montar_ab_pp(para_processar):
 
 def carregar_pti(caminho):
     """PTI do FULL: export TOTVS em latin-1, separado por `;`, valores em
-    formato pt-BR (ponto de milhar, vírgula decimal)."""
-    pti = pd.read_csv(caminho, dtype=str, encoding="latin-1", sep=";")
+    formato pt-BR (ponto de milhar, vírgula decimal). `caminho` pode ter
+    curinga ("PTI FULL*.csv"): o FULL tem 2 vendedores (750 e 751) e cada um
+    sai num arquivo -- junta todos (e ignora linha repetida)."""
+    arquivos = sorted(glob.glob(caminho)) or [caminho]
+    pti = pd.concat([pd.read_csv(a, dtype=str, encoding="latin-1", sep=";") for a in arquivos], ignore_index=True).drop_duplicates()
     for col in ["VALOR REAIS", "VALOR", "FRETE"]:
         pti[col] = pd.to_numeric(
             pti[col].str.replace(".", "", regex=False).str.replace(",", ".", regex=False), errors="coerce"

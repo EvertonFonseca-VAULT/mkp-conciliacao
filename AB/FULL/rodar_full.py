@@ -30,7 +30,8 @@ from modelo_ab_full import montar_ab_pp, carregar_pti
 from modelo_ab import montar_validacao, montar_pagamento, montar_frete, montar_para_processar
 
 CAMINHO_AB_PADRAO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB\FULL\2026\09.2026\MERCADO FULL 03.09.2026.xlsx"
-CAMINHO_PTI_PADRAO = r"C:\TEMP\PTI FULL.csv"
+# Curinga: o FULL tem 2 vendedores no PTI (750 e 751), um arquivo cada (ex.: "PTI FULL.csv" e "PTI FULL 750.csv").
+CAMINHO_PTI_PADRAO = r"C:\TEMP\PTI FULL*.csv"
 
 # Mesma pasta/prefixo que canais.py (AB/RB) usa em CANAIS["FULL"] pra achar o
 # "Para Processar" do dia -- salvando aqui com esse nome exato, o AB/RB acha
