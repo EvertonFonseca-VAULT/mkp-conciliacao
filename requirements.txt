@@ -1,4 +1,6 @@
-mssql-python
-azure-identity
 pandas
+numpy
 openpyxl
+requests
+beautifulsoup4
+playwright
