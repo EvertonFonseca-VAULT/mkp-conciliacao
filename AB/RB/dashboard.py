@@ -384,11 +384,11 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
               <td class="ped"><button type="button" class="pedido" data-copiar="{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
               {cel_descricao}
               <td class="num dif" title="{dica_dif}">{_valor_html(dif)}</td>
+              {cel_envio}
+              {cel_comissao}
               {cel_banco}
               {cel_marcacao}
-              {cel_comissao}
               {cel_desconto}
-              {cel_envio}
               {cel_repasse}
               {cel_rebate}
             </tr>""")
@@ -1313,8 +1313,8 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
         <table id="tabela-verificar">
           <thead><tr>
             <th class="c-chk" title="Ajustado">Aj.</th><th>RBX</th><th>RB</th><th>Dif. extrato</th><th>AB total</th>
-            <th class="esq">Pedido</th><th class="esq">Descrição</th><th>DIF</th><th title="RBX + DIF: valor a lançar no banco">Banco</th>{colunas_extra}
-            <th>Comissão</th><th>Desc/Bônus</th><th>Frete</th><th>Repasse</th><th>Rebate</th>
+            <th class="esq">Pedido</th><th class="esq">Descrição</th><th>DIF</th><th>Frete</th>
+            <th>Comissão</th><th title="RBX + DIF: valor a lançar no banco">Banco</th>{colunas_extra}<th>Desc/Bônus</th><th>Repasse</th><th>Rebate</th>
           </tr></thead>
           <tbody>{_linhas_tabela(fila_verificar, conferencia_rbx, historicos, valores_pedidos)}</tbody>
         </table>
