@@ -727,8 +727,8 @@ h1{margin:0;font:600 24px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.015em}
 .op .val.grande{font-size:19px;font-weight:600}
 .sinal{font:400 16px/1.6 'IBM Plex Mono',monospace;color:var(--ink3)}
 /* Alvo e Calculado: 1 clique copia so os digitos (sem ponto/virgula) pra colar na transferencia */
-.copiavel{background:none;border:none;border-bottom:1px dotted var(--ink3);padding:0 0 2px;color:var(--ink);cursor:pointer;text-align:left}
-.copiavel:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.copiavel{background:none;border:none;padding:0;color:var(--ink);cursor:pointer;text-align:left}
+.copiavel:hover{color:var(--accent)}
 .divisor{width:1px;height:38px;background:var(--line);margin:0 4px}
 .dif-badge{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;background:var(--cbg);border:1px solid var(--cline);font:500 12px/1 'IBM Plex Sans',sans-serif;color:var(--c)}
 .dif-badge .dot{margin:0;background:var(--c)}
