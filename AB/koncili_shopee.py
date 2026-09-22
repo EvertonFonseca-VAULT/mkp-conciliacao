@@ -30,7 +30,6 @@ import glob
 import json
 import os
 import sys
-from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "RB"))
 
@@ -134,6 +133,26 @@ def empilhar_conta(canal):
     return destino
 
 
+# Candidatos pro valor real de channelName -- "Shopee" (rotulo da tela) deu
+# 0 em tudo, igual o Mercado usa "MERCADOLIVRE" (maiusculo) e nao "Mercado
+# Livre", desconfio que aqui seja parecido. Usado so por --descobrir.
+CANDIDATOS_CHANNEL = ["Shopee", "SHOPEE", "shopee", "SHOPEE_MKT", "ShopeeMarketplace"]
+
+
+def descobrir_channel(req, hdr):
+    """Roda 1 pagina de busca pra cada candidato de channelName e mostra
+    quantos registros cada um acha (d["count"]) + ate 5 contas/datas de
+    exemplo -- pra achar o valor certo sem ficar advinhando um a um (pedido
+    do Everton, 22/09/2026, depois de --channel=Shopee dar 0 nas 5 contas)."""
+    for candidato in CANDIDATOS_CHANNEL:
+        corpo = {"analyzed": None, "status": None, "channelName": [candidato], "page": 1, "pageSize": 100,
+                 "orderByField": "PROCESS_CREATED_DATE", "orderByDir": "desc"}
+        d = req.post(f"{API}/reconciliation/api/view/conciliation/search", data=json.dumps(corpo), headers=hdr).json()
+        print(f"channelName={candidato!r}: count={d['count']}")
+        for i in d["values"][:5]:
+            print(f"    accountName={i['accountName']!r}  initDate={i['initDate']}")
+
+
 def main(argv):
     contas = [a.split("=", 1)[1].upper() for a in argv if a.startswith("--conta=")] or list(CANAIS_SHOPEE)
     desde = next((a.split("=", 1)[1] for a in argv if a.startswith("--desde=")), DESDE_PADRAO)
@@ -149,6 +168,9 @@ def main(argv):
         try:
             login(page, usuario, senha)
             hdr = cabecalhos_api(page)
+            if "--descobrir" in argv:
+                descobrir_channel(page.context.request, hdr)
+                return
             for canal in contas:
                 print(f"=== {canal} ({CANAIS_SHOPEE[canal]}) ===", flush=True)
                 try:
