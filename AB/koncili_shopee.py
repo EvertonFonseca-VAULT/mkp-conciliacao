@@ -10,15 +10,14 @@ pontos -- convencao diferente do resto do projeto, pedido do Everton,
 22/09/2026) + o empilhado (SHOPEE_<CANAL>_EMPILHADO.xlsx, todos os
 lancamentos concatenados, sem mexer nas colunas).
 
-Nomes de conta: o que o Everton copiou do seletor do Koncili (22/09/2026)
-nao batia exatamente com o que a API retorna em accountName -- confirmado
-com --descobrir no mesmo dia: ES e WEB usam travessao "-" (nao hifen "-")
-e/ou espacos diferentes dos que foram passados. ES e WEB ja corrigidos com
-o texto exato visto na API; LG, CENTER e PRIME ainda usam o texto original
-do seletor e podem estar com a mesma pegadinha -- conferir com --descobrir
-antes de confiar neles. O channelName NAO importa o case ("Shopee"/
-"SHOPEE"/"shopee" dao o mesmo resultado, confirmado com dado real) -- entao
-"nenhum lancamento achado" e sinal de nome de conta errado, nao de channel.
+Nomes de conta: o que o Everton copiou do seletor do Koncili nao batia
+exatamente com o que a API retorna em accountName -- confirmado com
+--descobrir, 22/09/2026: as 5 usam travessao "–" ou hifen "-" com
+espacos diferentes dos que foram passados (LG/ES/CENTER com travessao,
+PRIME/WEB com hifen+espacos). As 5 corrigidas com o texto exato visto na
+API. O channelName NAO importa o case ("Shopee"/"SHOPEE"/"shopee" dao o
+mesmo resultado, confirmado com dado real) -- entao "nenhum lancamento
+achado" e sinal de nome de conta errado, nao de channel.
 
 Uso (mesmas variaveis de ambiente e venv do koncili.py -- KONCILI_USUARIO/
 KONCILI_SENHA, Python do venv do Screaper Mercado):
@@ -42,14 +41,15 @@ from koncili import API, baixar_ab, cabecalhos_api, ler_credenciais, login
 
 PASTA_SHOPEE = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\CONCILIACAO\SHOPEE"
 
-# canal -> nome da CONTA no Koncili. ES e WEB confirmados com o texto exato
-# da API (--descobrir, 22/09/2026); LG, CENTER e PRIME ainda sao o texto que
-# o Everton copiou do seletor -- ver docstring do modulo.
+# canal -> nome da CONTA no Koncili. As 5 confirmadas com o texto exato da
+# API (--descobrir, 22/09/2026) -- reparar que nao seguem 1 padrao unico:
+# LG/ES/CENTER usam travessao "–" (nao hifen "-"), PRIME/WEB usam hifen
+# "-" com espaco dos 2 lados. Mantido exatamente como a API devolve.
 CANAIS_SHOPEE = {
-    "LG": "SHOPEE-LG_3P",
+    "LG": "SHOPEE – LG_3P",
     "ES": "Shopee – 1059412251_ES_1P",
-    "CENTER": "Shopee - 889973435_SC_1P",
-    "PRIME": "SHOPEE-WEBCO PRIME_3P",
+    "CENTER": "Shopee – 889973435_SC_1P",
+    "PRIME": "SHOPEE - WEBCO PRIME_3P",
     "WEB": "SHOPEE - WEBCONTINENTAL MARKETPLACE_3P",
 }
 
