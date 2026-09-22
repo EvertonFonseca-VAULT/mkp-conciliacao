@@ -42,19 +42,6 @@ from rebate_processar import gerar_rebate_processar, salvar_rebate_processar
 CAMINHO_ARQUIVO_MARKETPLACE = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CONCILIAÇÕES DE MARKETPLACE\MERCADO"
 
 
-def _auto_salvar_rb(caminho_rb, pasta_auxiliar):
-    """Copia o CONCILIADOR_RB.xlsx atual (CAMINHO_RB_PADRAO) pra
-    AUXILIAR/rb.xlsx sozinho, sempre que a RBX (rbx.xlsx) ja estiver la --
-    poupa o Everton de ter que salvar o RB a mao toda vez que atualiza a RBX
-    (pedido do Everton, 22/09/2026). So copia se a RBX ja existe (senao nao
-    tem o que conferir ainda, ver conferir_rbx.conferir); sobrescreve
-    sempre, pra pegar a versao mais recente do RB."""
-    caminho_rbx = os.path.join(pasta_auxiliar, "rbx.xlsx")
-    if os.path.exists(caminho_rbx):
-        os.makedirs(pasta_auxiliar, exist_ok=True)
-        shutil.copy2(caminho_rb, os.path.join(pasta_auxiliar, "rb.xlsx"))
-
-
 def _arquivar_rbx(canal, data, raiz, caminho_rbx):
     """Copia o rbx.xlsx pra CAMINHO_ARQUIVO_MARKETPLACE/<ano>/<mes>.<ano>/
     <data>_<raiz>.xlsx e grava, na linha 3 (mesma linha de "Emissao:"), as
@@ -170,10 +157,8 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     alvo = buscar_alvo(canal, data_ref)
     # Confere as 2 contas (original x transitoria) contra rb.xlsx/rbx.xlsx
     # em AUXILIAR/ -- None se ainda nao tem os 2 arquivos (feature opcional,
-    # nao trava o dia a dia). rb.xlsx e auto-copiado do CONCILIADOR_RB.xlsx
-    # (ver _auto_salvar_rb) assim que a RBX ja estiver la -- so a RBX
-    # continua manual. Ver conferir_rbx.py.
-    _auto_salvar_rb(caminho_rb, os.path.join(pasta_saida, "AUXILIAR"))
+    # nao trava o dia a dia). Os 2 arquivos sao salvos manualmente pelo
+    # Everton (pedido dele, 22/09/2026 -- sem auto-copia). Ver conferir_rbx.py.
     conferencia_rbx = conferir_rbx(canal, alvo, os.path.join(pasta_saida, "AUXILIAR"), rebate_total)
     # Fallback pedido a pedido (sem chave_rbx) pro canal que ainda nao tem
     # ela confirmada (ex. ES) -- so roda quando conferencia_rbx falhou por
@@ -326,29 +311,6 @@ def _testar_arquivar_rbx():
         assert ws2["G3"].value == "=E3-F3", ws2["G3"].value
 
 
-def _testar_auto_salvar_rb():
-    """So copia quando a RBX ja esta na pasta (senao nao ha o que conferir
-    ainda); sobrescreve um rb.xlsx antigo com o conteudo mais recente do
-    CONCILIADOR_RB.xlsx. Pedido do Everton, 22/09/2026."""
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        caminho_rb_atual = os.path.join(tmp, "CONCILIADOR_RB.xlsx")
-        open(caminho_rb_atual, "w").write("rb novo")
-        pasta_auxiliar = os.path.join(tmp, "AUXILIAR")
-        os.makedirs(pasta_auxiliar)
-
-        # sem RBX ainda -- nao copia
-        _auto_salvar_rb(caminho_rb_atual, pasta_auxiliar)
-        assert not os.path.exists(os.path.join(pasta_auxiliar, "rb.xlsx"))
-
-        # RBX chegou, rb.xlsx antigo (sera sobrescrito)
-        open(os.path.join(pasta_auxiliar, "rbx.xlsx"), "w").write("rbx")
-        open(os.path.join(pasta_auxiliar, "rb.xlsx"), "w").write("rb velho")
-        _auto_salvar_rb(caminho_rb_atual, pasta_auxiliar)
-        assert open(os.path.join(pasta_auxiliar, "rb.xlsx")).read() == "rb novo"
-
-
 def _testar_ordenar_fila_verificar():
     """Exemplo real do Everton: DIF = [1000, 500, -1500, -300] tem que sair
     1000, 500, -1500, -300 (positivos maior->menor, depois negativos
@@ -380,7 +342,6 @@ def _testar_caminho_rebate_processar():
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         _testar_arquivar_rbx()
-        _testar_auto_salvar_rb()
         _testar_ordenar_fila_verificar()
         _testar_caminho_rebate_processar()
         print("rodar_conciliacao_rb.py: ok")
