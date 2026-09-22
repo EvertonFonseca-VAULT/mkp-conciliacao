@@ -25,6 +25,7 @@ KONCILI_SENHA, Python do venv do Screaper Mercado):
     python koncili_shopee.py --conta=ES                # so uma conta
     python koncili_shopee.py --desde=2026-07-01 --ate=2026-08-31
     python koncili_shopee.py --descobrir               # lista as accountName reais da API
+    python koncili_shopee.py --periodos=PRIME           # lista TODOS os repasses da conta (sem filtro de data) -- debug
     python koncili_shopee.py --teste                   # autoteste offline
 """
 
@@ -156,6 +157,35 @@ def descobrir_contas(req, hdr, channel="Shopee", max_paginas=30):
         print(repr(nome))
 
 
+def listar_periodos(req, hdr, canal, channel="Shopee", max_paginas=30):
+    """Lista TODOS os repasses da conta (sem filtro de desde/ate) -- pra
+    depurar 2 duvidas: (1) a conta realmente nao tem nenhum repasse, ou o
+    nome ainda esta errado; (2) o initDate de cada repasse cobre que
+    periodo de verdade -- se o periodo de um repasse comeca antes de 01/07
+    mas cobre parte de julho, o filtro desde/ate de achar_repasses exclui
+    ele (so olha initDate, nao tem endDate pra saber se cobre o periodo
+    pedido). Mostra o JSON cru do 1o repasse (pra ver se existe um campo de
+    data final) e o initDate de todos, do mais antigo pro mais novo. Pedido
+    do Everton, 22/09/2026 (julho quase nao apareceu, PRIME nao baixou
+    nada)."""
+    conta = CANAIS_SHOPEE[canal]
+    achados = []
+    for pg in range(1, max_paginas + 1):
+        corpo = {"analyzed": None, "status": None, "channelName": [channel], "page": pg, "pageSize": 100,
+                 "orderByField": "PROCESS_CREATED_DATE", "orderByDir": "desc"}
+        d = req.post(f"{API}/reconciliation/api/view/conciliation/search", data=json.dumps(corpo), headers=hdr).json()
+        achados += [i for i in d["values"] if i["accountName"] == conta]
+        if pg * 100 >= d["count"]:
+            break
+    if not achados:
+        print(f"{canal} ({conta}): 0 repasses no total (nao e filtro de data -- o nome ainda nao bate ou a conta nao tem nada)")
+        return
+    print(f"{canal} ({conta}): {len(achados)} repasses no total. Campos: {list(achados[0].keys())}")
+    print(json.dumps(achados[0], indent=2, ensure_ascii=False, default=str))
+    for a in sorted(achados, key=lambda x: x["initDate"]):
+        print(f"  initDate={a['initDate']}")
+
+
 def main(argv):
     contas = [a.split("=", 1)[1].upper() for a in argv if a.startswith("--conta=")] or list(CANAIS_SHOPEE)
     desde = next((a.split("=", 1)[1] for a in argv if a.startswith("--desde=")), DESDE_PADRAO)
@@ -173,6 +203,10 @@ def main(argv):
             hdr = cabecalhos_api(page)
             if "--descobrir" in argv:
                 descobrir_contas(page.context.request, hdr, channel)
+                return
+            canal_periodos = next((a.split("=", 1)[1].upper() for a in argv if a.startswith("--periodos=")), None)
+            if canal_periodos:
+                listar_periodos(page.context.request, hdr, canal_periodos, channel)
                 return
             for canal in contas:
                 print(f"=== {canal} ({CANAIS_SHOPEE[canal]}) ===", flush=True)
