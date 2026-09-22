@@ -152,6 +152,27 @@ def _cancelamento_agregado_transitoria(df, chave):
     return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2)
 
 
+def _rebate_cancelado_rbx(df, chaves_rebate):
+    """Cupom/CMM de rebate cancelado hoje (rotulo comecando com "CAN-", ex.
+    "CAN-MKP CUPOM MELI FULL REPASSE") -- pedido que recebeu rebate direto
+    do ML/CMM em outro dia e teve o cupom estornado hoje (ex.: entrou em
+    disputa). Ja esta DENTRO de liquido_cupom_rebate/liquido_cmm_rebate (a
+    soma normal por chave inclui o CAN-, ele so casa a chave de novo) -- essa
+    funcao existe pra EXPLICAR a diferenca contra rebate_total (formula), que
+    so soma pedidos com STATUS==REBATE hoje e nao sabe desse estorno (o
+    pedido cancelado pode nem aparecer como REBATE hoje, so como VERIFICAR ou
+    nem aparecer). Achado real do Everton, FULL 14/09/2026: pedido
+    2000018111220588 (VERIFICAR, REBATE=0 na formula de hoje) com
+    CAN-MKP CUPOM MELI FULL REPASSE de -136,16 na RBX -- rebate_bate dava
+    'nao bate' por uma diferenca 100% explicada."""
+    chaves = [c for c in chaves_rebate if c]
+    if not chaves:
+        return 0.0
+    mask = _mask_chave(df["OPERACAO"], chaves) & df["OPERACAO"].str.upper().str.startswith("CAN-")
+    linhas = df.loc[mask]
+    return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2)
+
+
 def _valores_lancados(df, chave):
     """Valor liquido (ENTRADAS - SAIDAS) lancado por pedido, agrupado pela
     chave PED_MKP quando preenchido, senao DOCUMENTO (limpar_id) -- mesmo
@@ -291,8 +312,14 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
         _liquido(transitoria, chave_cmm_rebate) if chave_cmm_rebate else (0.0, 0)
     )
     liquido_rebate_rbx = round(liquido_cupom_rebate + liquido_cmm_rebate, 2)
+    # Rebate cancelado hoje (CAN-...) na RBX -- ja esta dentro de
+    # liquido_rebate_rbx, so serve pra ajustar rebate_total (formula) antes
+    # de comparar, senao o card mostra "nao bate" numa diferenca ja
+    # explicada. Ver _rebate_cancelado_rbx.
+    liquido_rebate_cancelado_rbx = _rebate_cancelado_rbx(transitoria, [chave_cupom_rebate, chave_cmm_rebate])
     rebate_bate = (
-        rebate_total is not None and abs(liquido_rebate_rbx - rebate_total) < TOLERANCIA
+        rebate_total is not None
+        and abs(liquido_rebate_rbx - round(rebate_total + liquido_rebate_cancelado_rbx, 2)) < TOLERANCIA
     )
 
     return {
@@ -335,6 +362,9 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
         "liquido_cmm_rebate": liquido_cmm_rebate,
         "qtd_cmm_rebate": qtd_cmm_rebate,
         "liquido_rebate_rbx": liquido_rebate_rbx,
+        # Rebate cancelado hoje (ja dentro de liquido_rebate_rbx) -- so pra
+        # mostrar/explicar a diferenca. Ver _rebate_cancelado_rbx.
+        "liquido_rebate_cancelado_rbx": liquido_rebate_cancelado_rbx,
         "rebate_bate": rebate_bate,
     }
 
@@ -521,6 +551,29 @@ if __name__ == "__main__":
         assert r4["qtd_cmm_rebate"] == 1, r4
         assert r4["liquido_rebate_rbx"] == 25.0, r4
         assert bool(r4["rebate_bate"]), r4  # 25.0 == 25.0 -> bate
+
+    # Achado real do Everton (FULL 14/09/2026, pedido 2000018111220588,
+    # R$ 136,16, aqui com 15.0): cupom recebido em outro dia, cancelado HOJE
+    # ("CAN-MKP CUPOM MELI FULL REPASSE") -- o pedido nem aparece como
+    # REBATE hoje (foi pra VERIFICAR, reserve_for_dispute), entao
+    # rebate_total (formula) so sabe do bruto de outro pedido ("1" = 25.0),
+    # nao do cancelamento. Sem a correcao, rebate_bate comparava
+    # liquido_rebate_rbx (10.0, ja liquido do cancelamento) contra 25.0 e
+    # dava "nao bate" (diferenca de 15.0, exatamente o cancelado).
+    with tempfile.TemporaryDirectory() as tmp9c:
+        _escrever(os.path.join(tmp9c, "rb.xlsx"), "103925", [])
+        _escrever(os.path.join(tmp9c, "rbx.xlsx"), "X103925", [
+            ("MKP CUPOM MELI FULL REPASSE", 25.0, 0, "1", "1"),
+            ("CAN-MKP CUPOM MELI FULL REPASSE", 0, 15.0, "2000018111220588", "2000018111220588"),
+        ])
+        # rebate_total = 25 (formula, so sabe do pedido "1"); RBX liquido =
+        # 25 - 15 = 10 (ja com o cancelamento). Sem a correcao, rebate_bate
+        # comparava 10 contra 25 e dava "nao bate" (diferenca de 15, exatamente
+        # o cancelado). Com a correcao: 10 == 25 + (-15) -> bate.
+        r9c = conferir("FULL", alvo=None, pasta_auxiliar=tmp9c, rebate_total=25.0)
+        assert r9c["liquido_rebate_rbx"] == 10.0, r9c
+        assert r9c["liquido_rebate_cancelado_rbx"] == -15.0, r9c
+        assert bool(r9c["rebate_bate"]), r9c
 
     # Cenario real (FULL 09/09/2026): pedido lancado (e ja transferido) num
     # dia ANTERIOR, cancelado HOJE -- so o debito residual fica na
