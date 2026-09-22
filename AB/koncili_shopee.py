@@ -10,21 +10,19 @@ pontos -- convencao diferente do resto do projeto, pedido do Everton,
 22/09/2026) + o empilhado (SHOPEE_<CANAL>_EMPILHADO.xlsx, todos os
 lancamentos concatenados, sem mexer nas colunas).
 
-ATENCAO -- 2 coisas nao confirmadas ainda (1a rodada real vai revelar se
-estao certas):
-  - "channelName": [CHANNEL] no corpo da busca (ver achar_repasses) -- um
-    CHUTE ("SHOPEE", mesmo padrao de "MERCADOLIVRE" que koncili.py usa pro
-    Mercado). Se a extracao nao achar nada, tentar com --channel=OUTRONOME.
-  - Nome exato das 5 contas em CANAIS_SHOPEE, principalmente "SHOPEE lg"
-    (o Everton escreveu "sSHOPEE lg" -- pode ter um espaco/maiuscula
-    diferente do cadastrado no Koncili).
+Nomes de conta confirmados pelo Everton, 22/09/2026 (copiados direto do
+seletor do Koncili -- reparar que 3 comecam "SHOPEE-..." maiusculo/sem
+espaco antes do hifen, e 2 comecam "Shopee -..."/"Shopee - ..." com espaco
+diferente -- mantido exatamente como veio, nao "arrumei"). O rotulo do canal
+no Koncili pras 5 e "[Shopee]" -- channelName da API usa esse texto
+("Shopee"); se a extracao nao achar nada, conferir com --channel=OUTRONOME.
 
 Uso (mesmas variaveis de ambiente e venv do koncili.py -- KONCILI_USUARIO/
 KONCILI_SENHA, Python do venv do Screaper Mercado):
     python koncili_shopee.py                          # as 5 contas, julho e agosto/2026
     python koncili_shopee.py --conta=ES                # so uma conta
     python koncili_shopee.py --desde=2026-07-01 --ate=2026-08-31
-    python koncili_shopee.py --channel=SHOPEE_MKT      # se "SHOPEE" nao achar nada
+    python koncili_shopee.py --channel=SHOPEE_MKT      # se "Shopee" nao achar nada
     python koncili_shopee.py --teste                   # autoteste offline
 """
 
@@ -42,14 +40,14 @@ from koncili import API, baixar_ab, cabecalhos_api, ler_credenciais, login
 
 PASTA_SHOPEE = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\CONCILIACAO\SHOPEE"
 
-# canal -> nome da CONTA no Koncili (passado pelo Everton, 22/09/2026 --
-# conferir "SHOPEE lg" na 1a rodada, ver ATENCAO no topo do modulo).
+# canal -> nome da CONTA no Koncili (confirmado pelo Everton, 22/09/2026 --
+# ver docstring do modulo).
 CANAIS_SHOPEE = {
-    "LG": "SHOPEE lg",
-    "ES": "SHOPEE-1059412251_ES",
-    "CENTER": "SHOPEE-889973435_SC",
-    "PRIME": "SHOPEE-WEBCO-PRIME3P",
-    "WEB": "SHOPEE-WEBCONTINENTAL MARKETPLACE",
+    "LG": "SHOPEE-LG_3P",
+    "ES": "Shopee -1059412251_ES_1P",
+    "CENTER": "Shopee - 889973435_SC_1P",
+    "PRIME": "SHOPEE-WEBCO PRIME_3P",
+    "WEB": "SHOPEE-WEBCONTINENTAL MARKETPLACE_3P",
 }
 
 # Pedido do Everton, 22/09/2026: "extrai julho e agosto" (hoje e 22/09/2026).
@@ -71,7 +69,7 @@ def caminho_empilhado(canal):
     return os.path.join(pasta_conta(canal), f"SHOPEE_{canal}_EMPILHADO.xlsx")
 
 
-def achar_repasses(req, hdr, conta, desde_iso, ate_iso, channel="SHOPEE", max_paginas=30):
+def achar_repasses(req, hdr, conta, desde_iso, ate_iso, channel="Shopee", max_paginas=30):
     """Todos os repasses da `conta` com initDate dentro de [desde_iso,
     ate_iso] (AAAA-MM-DD). Sem early-stop por data (a ordenacao e por
     PROCESS_CREATED_DATE, nao por initDate -- nao da pra confiar que parar
@@ -90,7 +88,7 @@ def achar_repasses(req, hdr, conta, desde_iso, ate_iso, channel="SHOPEE", max_pa
     return achados
 
 
-def extrair_conta(page, req, hdr, canal, desde_iso, ate_iso, channel="SHOPEE"):
+def extrair_conta(page, req, hdr, canal, desde_iso, ate_iso, channel="Shopee"):
     """Baixa (sem sobrescrever) os periodos ainda nao salvos da conta.
     Devolve a lista dos arquivos baixados agora."""
     conta = CANAIS_SHOPEE[canal]
@@ -140,7 +138,7 @@ def main(argv):
     contas = [a.split("=", 1)[1].upper() for a in argv if a.startswith("--conta=")] or list(CANAIS_SHOPEE)
     desde = next((a.split("=", 1)[1] for a in argv if a.startswith("--desde=")), DESDE_PADRAO)
     ate = next((a.split("=", 1)[1] for a in argv if a.startswith("--ate=")), ATE_PADRAO)
-    channel = next((a.split("=", 1)[1] for a in argv if a.startswith("--channel=")), "SHOPEE")
+    channel = next((a.split("=", 1)[1] for a in argv if a.startswith("--channel=")), "Shopee")
     usuario, senha = ler_credenciais()
 
     from playwright.sync_api import sync_playwright
