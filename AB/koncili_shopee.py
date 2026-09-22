@@ -10,19 +10,22 @@ pontos -- convencao diferente do resto do projeto, pedido do Everton,
 22/09/2026) + o empilhado (SHOPEE_<CANAL>_EMPILHADO.xlsx, todos os
 lancamentos concatenados, sem mexer nas colunas).
 
-Nomes de conta confirmados pelo Everton, 22/09/2026 (copiados direto do
-seletor do Koncili -- reparar que 3 comecam "SHOPEE-..." maiusculo/sem
-espaco antes do hifen, e 2 comecam "Shopee -..."/"Shopee - ..." com espaco
-diferente -- mantido exatamente como veio, nao "arrumei"). O rotulo do canal
-no Koncili pras 5 e "[Shopee]" -- channelName da API usa esse texto
-("Shopee"); se a extracao nao achar nada, conferir com --channel=OUTRONOME.
+Nomes de conta: o que o Everton copiou do seletor do Koncili (22/09/2026)
+nao batia exatamente com o que a API retorna em accountName -- confirmado
+com --descobrir no mesmo dia: ES e WEB usam travessao "-" (nao hifen "-")
+e/ou espacos diferentes dos que foram passados. ES e WEB ja corrigidos com
+o texto exato visto na API; LG, CENTER e PRIME ainda usam o texto original
+do seletor e podem estar com a mesma pegadinha -- conferir com --descobrir
+antes de confiar neles. O channelName NAO importa o case ("Shopee"/
+"SHOPEE"/"shopee" dao o mesmo resultado, confirmado com dado real) -- entao
+"nenhum lancamento achado" e sinal de nome de conta errado, nao de channel.
 
 Uso (mesmas variaveis de ambiente e venv do koncili.py -- KONCILI_USUARIO/
 KONCILI_SENHA, Python do venv do Screaper Mercado):
     python koncili_shopee.py                          # as 5 contas, julho e agosto/2026
     python koncili_shopee.py --conta=ES                # so uma conta
     python koncili_shopee.py --desde=2026-07-01 --ate=2026-08-31
-    python koncili_shopee.py --channel=SHOPEE_MKT      # se "Shopee" nao achar nada
+    python koncili_shopee.py --descobrir               # lista as accountName reais da API
     python koncili_shopee.py --teste                   # autoteste offline
 """
 
@@ -39,14 +42,15 @@ from koncili import API, baixar_ab, cabecalhos_api, ler_credenciais, login
 
 PASTA_SHOPEE = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\CONCILIACAO\SHOPEE"
 
-# canal -> nome da CONTA no Koncili (confirmado pelo Everton, 22/09/2026 --
-# ver docstring do modulo).
+# canal -> nome da CONTA no Koncili. ES e WEB confirmados com o texto exato
+# da API (--descobrir, 22/09/2026); LG, CENTER e PRIME ainda sao o texto que
+# o Everton copiou do seletor -- ver docstring do modulo.
 CANAIS_SHOPEE = {
     "LG": "SHOPEE-LG_3P",
-    "ES": "Shopee -1059412251_ES_1P",
+    "ES": "Shopee – 1059412251_ES_1P",
     "CENTER": "Shopee - 889973435_SC_1P",
     "PRIME": "SHOPEE-WEBCO PRIME_3P",
-    "WEB": "SHOPEE-WEBCONTINENTAL MARKETPLACE_3P",
+    "WEB": "SHOPEE - WEBCONTINENTAL MARKETPLACE_3P",
 }
 
 # Pedido do Everton, 22/09/2026: "extrai julho e agosto" (hoje e 22/09/2026).
@@ -133,24 +137,23 @@ def empilhar_conta(canal):
     return destino
 
 
-# Candidatos pro valor real de channelName -- "Shopee" (rotulo da tela) deu
-# 0 em tudo, igual o Mercado usa "MERCADOLIVRE" (maiusculo) e nao "Mercado
-# Livre", desconfio que aqui seja parecido. Usado so por --descobrir.
-CANDIDATOS_CHANNEL = ["Shopee", "SHOPEE", "shopee", "SHOPEE_MKT", "ShopeeMarketplace"]
-
-
-def descobrir_channel(req, hdr):
-    """Roda 1 pagina de busca pra cada candidato de channelName e mostra
-    quantos registros cada um acha (d["count"]) + ate 5 contas/datas de
-    exemplo -- pra achar o valor certo sem ficar advinhando um a um (pedido
-    do Everton, 22/09/2026, depois de --channel=Shopee dar 0 nas 5 contas)."""
-    for candidato in CANDIDATOS_CHANNEL:
-        corpo = {"analyzed": None, "status": None, "channelName": [candidato], "page": 1, "pageSize": 100,
+def descobrir_contas(req, hdr, channel="Shopee", max_paginas=30):
+    """Lista todas as accountName distintas que o channelName acha (case
+    nao importa -- confirmado com dado real 22/09/2026: "Shopee"/"SHOPEE"/
+    "shopee" deram os mesmos 610 registros). O problema real que fez as 5
+    contas darem "nenhum lancamento" nao era o channel, era o nome exato da
+    conta (traco "-" x "-" en-dash, espacos) -- por isso aqui pega tudo que
+    existe de uma vez, pra copiar o texto exato certo pra CANAIS_SHOPEE."""
+    vistas = set()
+    for pg in range(1, max_paginas + 1):
+        corpo = {"analyzed": None, "status": None, "channelName": [channel], "page": pg, "pageSize": 100,
                  "orderByField": "PROCESS_CREATED_DATE", "orderByDir": "desc"}
         d = req.post(f"{API}/reconciliation/api/view/conciliation/search", data=json.dumps(corpo), headers=hdr).json()
-        print(f"channelName={candidato!r}: count={d['count']}")
-        for i in d["values"][:5]:
-            print(f"    accountName={i['accountName']!r}  initDate={i['initDate']}")
+        vistas.update(i["accountName"] for i in d["values"])
+        if pg * 100 >= d["count"]:
+            break
+    for nome in sorted(vistas):
+        print(repr(nome))
 
 
 def main(argv):
@@ -169,7 +172,7 @@ def main(argv):
             login(page, usuario, senha)
             hdr = cabecalhos_api(page)
             if "--descobrir" in argv:
-                descobrir_channel(page.context.request, hdr)
+                descobrir_contas(page.context.request, hdr, channel)
                 return
             for canal in contas:
                 print(f"=== {canal} ({CANAIS_SHOPEE[canal]}) ===", flush=True)
