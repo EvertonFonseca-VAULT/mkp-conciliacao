@@ -55,20 +55,6 @@ def _auto_salvar_rb(caminho_rb, pasta_auxiliar):
         shutil.copy2(caminho_rb, os.path.join(pasta_auxiliar, "rb.xlsx"))
 
 
-def _auto_propagar_rbx_para_conciliador(caminho_rb_padrao, pasta_auxiliar):
-    """Copia AUXILIAR/rbx.xlsx por cima do CONCILIADOR_RB.xlsx em C:\\TEMP
-    (CAMINHO_RB_PADRAO) -- pedido do Everton, 22/09/2026 (revisao do pedido
-    acima: confirmou que quer a RBX, nao o RB, propagada pra la, mesmo
-    avisado que CONCILIADOR_RB.xlsx e o extrato exportado do TOTVS que
-    alimenta o cruzamento AB x RB de TODOS os canais -- ver canais.py). So
-    chamada no fim de processar(), depois que esse dia ja rodou com o
-    CONCILIADOR_RB.xlsx original -- pra nao trocar o extrato debaixo do
-    proprio processamento que esta rodando. So copia se a RBX existir."""
-    caminho_rbx = os.path.join(pasta_auxiliar, "rbx.xlsx")
-    if os.path.exists(caminho_rbx):
-        shutil.copy2(caminho_rbx, caminho_rb_padrao)
-
-
 def _arquivar_rbx(canal, data, raiz, caminho_rbx):
     """Copia o rbx.xlsx pra CAMINHO_ARQUIVO_MARKETPLACE/<ano>/<mes>.<ano>/
     <data>_<raiz>.xlsx e grava, na linha 3 (mesma linha de "Emissao:"), as
@@ -251,11 +237,6 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
             f"Feche o arquivo no Excel antes de rodar de novo: {exc.filename}"
         ) from exc
 
-    # So no fim: esse processar() ja usou o CONCILIADOR_RB.xlsx original la
-    # em cima (rodar()/metadata_rb) -- a partir daqui pode trocar o arquivo
-    # pra proxima vez. Ver _auto_propagar_rbx_para_conciliador.
-    _auto_propagar_rbx_para_conciliador(caminho_rb, os.path.join(pasta_saida, "AUXILIAR"))
-
     return {
         "resultado": resultado,
         "fila_verificar": fila_verificar,
@@ -368,27 +349,6 @@ def _testar_auto_salvar_rb():
         assert open(os.path.join(pasta_auxiliar, "rb.xlsx")).read() == "rb novo"
 
 
-def _testar_auto_propagar_rbx_para_conciliador():
-    """RBX substitui o CONCILIADOR_RB.xlsx quando ela existe; sem RBX, nao
-    mexe no arquivo original. Pedido do Everton, 22/09/2026."""
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        caminho_rb_padrao = os.path.join(tmp, "CONCILIADOR_RB.xlsx")
-        open(caminho_rb_padrao, "w").write("rb original")
-        pasta_auxiliar = os.path.join(tmp, "AUXILIAR")
-        os.makedirs(pasta_auxiliar)
-
-        # sem RBX ainda -- nao mexe no CONCILIADOR_RB.xlsx
-        _auto_propagar_rbx_para_conciliador(caminho_rb_padrao, pasta_auxiliar)
-        assert open(caminho_rb_padrao).read() == "rb original"
-
-        # RBX chegou -- substitui o CONCILIADOR_RB.xlsx por ela
-        open(os.path.join(pasta_auxiliar, "rbx.xlsx"), "w").write("rbx do dia")
-        _auto_propagar_rbx_para_conciliador(caminho_rb_padrao, pasta_auxiliar)
-        assert open(caminho_rb_padrao).read() == "rbx do dia"
-
-
 def _testar_ordenar_fila_verificar():
     """Exemplo real do Everton: DIF = [1000, 500, -1500, -300] tem que sair
     1000, 500, -1500, -300 (positivos maior->menor, depois negativos
@@ -421,7 +381,6 @@ if __name__ == "__main__":
     if "--self-test" in sys.argv:
         _testar_arquivar_rbx()
         _testar_auto_salvar_rb()
-        _testar_auto_propagar_rbx_para_conciliador()
         _testar_ordenar_fila_verificar()
         _testar_caminho_rebate_processar()
         print("rodar_conciliacao_rb.py: ok")
