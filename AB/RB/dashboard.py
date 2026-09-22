@@ -80,9 +80,11 @@ _CAMPOS_CMM_JS = {
     "RESPONSAVEL": "RESPONSAVEL", "DATA_LACTO": "DATA_LACTO", "ORIGEM": "ORIGEM",
     "PAGADOR": "PAGADOR", "LOJA": "LOJA",
     "MOTIVO DO MOVIMENTO": "chk.dataset.motivo", "NATUREZA": "chk.dataset.natureza",
-    # apostrofo na frente, igual o botao do pedido -- sem isso o pedido (ate
-    # 16 digitos) vira notacao cientifica ao colar no Excel.
-    "PEDIDO MKP / CV": "\"'\" + chk.dataset.pedido", "VENDEDOR": "VENDEDOR",
+    # SEM apostrofo (ao contrario do MOV): a coluna PEDIDO MKP / CV do CMM ja
+    # e Texto na planilha -- o apostrofo nao e consumido como no formato
+    # Geral, fica literal na celula e quebra o import no TOTVS. Pedido do
+    # Everton, 22/09/2026.
+    "PEDIDO MKP / CV": "chk.dataset.pedido", "VENDEDOR": "VENDEDOR",
     "BANCO": "chk.dataset.banco", "AGENCIA": "chk.dataset.agencia",
     "CONTA": "chk.dataset.conta", "HISTORICO": "chk.dataset.historico",
     "VALOR R$": "chk.dataset.valor", "OBSERVACAO": '""',
@@ -1032,8 +1034,9 @@ _JS = r"""
 
   // Copiar da tabela pro Excel: no tema escuro o texto copiado vinha claro
   // (invisivel no Excel branco) -- entrega TSV puro. O pedido da fila sai SEM
-  // apostrofo (pedido do Everton, 21/09/2026: o apostrofo so vale nas linhas
-  // de CMM e MOV, la ele continua).
+  // apostrofo (pedido do Everton, 21/09/2026). Nas linhas de CMM/MOV o
+  // apostrofo so continua no MOV -- no CMM tira (22/09/2026, ver
+  // _CAMPOS_CMM_JS).
   document.addEventListener("copy", function (e) {
     var tabela = document.getElementById("tabela-verificar");
     var sel = window.getSelection();
@@ -1717,10 +1720,12 @@ if __name__ == "__main__":
         assert conteudo.count("atualizarNatureza()") >= 1  # chamada de bootstrap no fim da IIFE
         assert '].join("\\t")' in conteudo and 'join("\\n")' in conteudo  # tab e quebra de linha no JS
 
-        # Pedido colado no CMM/MOV com apostrofo na frente -- sem isso o
-        # pedido (ate 16 digitos) vira notacao cientifica ao colar no Excel.
-        assert "\"'\" + chk.dataset.pedido" in conteudo
-        assert '"\'" + chk.dataset.pedido, VENDEDOR,' in conteudo  # linhasMov: vendedor na 4a coluna, igual ao CMM
+        # MOV continua com apostrofo na frente do pedido (coluna Geral, vira
+        # notacao cientifica sem isso). CMM tira: a coluna PEDIDO MKP / CV ja
+        # e Texto la, o apostrofo ficava literal na celula e quebrava o
+        # import no TOTVS (Everton, 22/09/2026).
+        assert '"\'" + chk.dataset.pedido, VENDEDOR,' in conteudo  # linhasMov
+        assert conteudo.count("\"'\" + chk.dataset.pedido") == 1  # so no MOV, nao mais no CMM
 
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
