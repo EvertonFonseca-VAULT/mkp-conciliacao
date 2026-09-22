@@ -8,8 +8,18 @@ STATUS (nessa ordem):
         bateu certo sem sobrar diferenca)
     DIF = 0                                -> SEM DIFF
     COMISSAO + DIF = 0, COMISSAO != 0, DIF < 0  -> EST COM (estorno de comissao)
-    DIF - MEDIACAO = 0, DIF != 0           -> MEDIACAO
     senao                                  -> VERIFICAR (fila de ajuste manual)
+
+MEDIACAO NAO E MAIS UM STATUS (tirado em 22/09/2026, achado real do Everton
+no pedido 2000017948747594, FULL 14/09/2026): a coluna MEDIACAO continua
+(informativa, mesma logica de sempre), mas "DIF - MEDIACAO == 0" nunca foi
+uma confirmacao de verdade -- DIF e MEDIACAO vem os 2 do proprio AB do dia
+(nao do RB/RBX), entao batem por construcao sempre que o AB do pedido no dia
+so tem linha de mediacao (ex.: um "mediation_cancel" sozinho). Rendia STATUS
+"resolvido, nao precisa de baixa" pra um repasse que nunca tinha sido lancado
+em lugar nenhum (rb.xlsx e rbx.xlsx sem nenhuma linha do pedido) -- ficava
+invisivel, fora da Fila VERIFICAR. Agora cai em VERIFICAR que nem qualquer
+outra diferenca sem explicacao confirmada.
 """
 
 import numpy as np
@@ -67,9 +77,8 @@ def cruzar_com_rb(agregado, rb, para_processar):
             df["REBATE"] != 0,
             df["DIF"] == 0,
             (df["COMISSAO"] + df["DIF"] == 0) & (df["COMISSAO"] != 0) & (df["DIF"] < 0),
-            (df["DIF"] - df["MEDIACAO"] == 0) & (df["DIF"] != 0),
         ],
-        ["REBATE", "SEM DIFF", "EST COM", "MEDIACAO"],
+        ["REBATE", "SEM DIFF", "EST COM"],
         default="VERIFICAR",
     )
 
@@ -83,8 +92,8 @@ def cruzar_com_rb(agregado, rb, para_processar):
 
 if __name__ == "__main__":
     agregado = pd.DataFrame({
-        "PEDIDO_MKP": ["1", "2"], "REPASSE": [100.0, 44.05],
-        "COMISSAO": [0.0, 0.0], "FRETE": [0.0, 0.0],
+        "PEDIDO_MKP": ["1", "2", "3"], "REPASSE": [100.0, 44.05, 88.1],
+        "COMISSAO": [0.0, 0.0, 0.0], "FRETE": [0.0, 0.0, 0.0],
     })
     rb = pd.DataFrame({
         "PED_MKP": ["1"], "SALDO_TITULO": [0.0], "ENTRADAS": [100.0], "SAIDAS": [0.0],
@@ -92,11 +101,16 @@ if __name__ == "__main__":
     # pedido "2": 2 linhas no AB (refund + mediation), confirmado com dado
     # real do pedido 2000017591518558 (08/09/2026) -- DESCRICAO junta as 2,
     # separadas por virgula, pra aparecer inteiro na fila VERIFICAR.
+    # pedido "3": SO uma linha de mediacao (mediation_cancel), sem nada no
+    # RB -- dado real do pedido 2000017948747594 (FULL 14/09/2026): DIF e
+    # MEDIACAO vinham iguais (os 2 do mesmo AB) e escondiam um repasse nunca
+    # lancado (rb.xlsx/rbx.xlsx sem nenhuma linha do pedido, conferido a
+    # mao). Tem que cair em VERIFICAR, nao mais existe status MEDIACAO.
     para_processar = pd.DataFrame({
-        "EXTERNAL_REFERENCE": ["2", "2"],
-        "DESCRIPTION": ["refund", "mediation"],
-        "COUPON_AMOUNT": [0.0, 0.0],
-        "GROSS_AMOUNT": [0.0, 0.0],
+        "EXTERNAL_REFERENCE": ["2", "2", "3"],
+        "DESCRIPTION": ["refund", "mediation", "mediation_cancel"],
+        "COUPON_AMOUNT": [0.0, 0.0, 0.0],
+        "GROSS_AMOUNT": [0.0, 0.0, 88.1],
     })
     resultado = cruzar_com_rb(agregado, rb, para_processar)
     linha1 = resultado[resultado["PEDIDO_MKP"] == "1"].iloc[0]
@@ -104,4 +118,7 @@ if __name__ == "__main__":
     assert linha1["DESCRICAO"] == "", linha1  # sem linha no AB pro pedido "1"
     linha2 = resultado[resultado["PEDIDO_MKP"] == "2"].iloc[0]
     assert linha2["DESCRICAO"] == "mediation, refund", linha2  # ordem alfabetica
+    linha3 = resultado[resultado["PEDIDO_MKP"] == "3"].iloc[0]
+    assert linha3["MEDIACAO"] == 88.1 and linha3["DIF"] == 88.1, linha3  # batiam por construcao
+    assert linha3["STATUS"] == "VERIFICAR", linha3  # e NAO "MEDIACAO" (status removido)
     print("cruzamento.py: ok")

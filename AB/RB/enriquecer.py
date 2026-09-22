@@ -76,9 +76,6 @@ def enriquecer(resultado, raiz, ml_dados=None):
                 f"Resolvido pela formula -- incluir na planilha CMM (lote) o rebate de {row['REBATE']:.2f}."
             )
             continue
-        if status == "MEDIACAO":
-            df.at[i, "ACAO_SUGERIDA"] = "Resolvido pela formula -- diferenca e de mediacao, nao precisa de baixa manual."
-            continue
         if status == "EST COM":
             df.at[i, "ACAO_SUGERIDA"] = "Resolvido pela formula -- estorno de comissao."
             continue
