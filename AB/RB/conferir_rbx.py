@@ -78,7 +78,24 @@ CHAVE_RA = "TITULO RA"
 # liquido_transitoria_simulado + liquido_cancelado_original (cancelado vem
 # negativo, entao soma = subtrai o excedente). Pedido do Everton,
 # 18/09/2026.
+#
+# CORRECAO 22/09/2026 (achado real do Everton, FULL 14/09/2026, R$ 1.219,82):
+# quando o Everton JA lanca o par de compensacao (credito na Original +
+# debito na Transitoria, rotulo tipo "MKP_MELI_FU_CANCELAMENTOS", mesmo doc
+# nos 2), o debito na Transitoria ja entra em liquido_transitoria por causa
+# do chave_rbx normal (ela tambem contem "FU") -- subtrair
+# liquido_cancelado_original de novo em cima disso conta o mesmo lancamento
+# 2x. So faz sentido subtrair a PARTE que ainda nao tem par na Transitoria
+# (cenario original desta constante, pedido de dia anterior sem nada
+# lancado hoje) -- ver CHAVE_CANCELAMENTO_AGREGADO e
+# _cancelamento_agregado_transitoria.
 CHAVE_CANCELAMENTO_ORIGINAL = "CAN-REC"
+
+# Lancamento agregado de compensacao ("MKP_FULL_CANCELAMENTO",
+# "MKP_MELI_FU_CANCELAMENTOS") -- sai da Transitoria e entra na Original com
+# o mesmo rotulo (ver docstring do modulo), pra compensar exatamente os
+# CAN-REC do dia. Substring generico (singular/plural).
+CHAVE_CANCELAMENTO_AGREGADO = "CANCELAMENTO"
 
 
 def _liquido(df, chave):
@@ -120,6 +137,19 @@ def _cancelados_original(df, chave):
         for _, row in linhas.iterrows()
     ]
     return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2), len(linhas), detalhe
+
+
+def _cancelamento_agregado_transitoria(df, chave):
+    """Liquido do lancamento agregado de cancelamento JA na Transitoria hoje
+    (CHAVE_CANCELAMENTO_AGREGADO + chave do canal) -- a parte de
+    liquido_cancelado_original que esse lancamento ja cobre (ver correcao
+    22/09/2026 na docstring de CHAVE_CANCELAMENTO_ORIGINAL)."""
+    mask = (
+        df["OPERACAO"].str.contains(CHAVE_CANCELAMENTO_AGREGADO, case=False, na=False)
+        & _mask_chave(df["OPERACAO"], chave)
+    )
+    linhas = df.loc[mask]
+    return round((linhas["ENTRADAS"] - linhas["SAIDAS"]).sum(), 2)
 
 
 def _valores_lancados(df, chave):
@@ -233,7 +263,17 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
     liquido_cancelado_original, qtd_cancelado_original, cancelados_original = (
         _cancelados_original(original, chave)
     )
-    valor_transferencia = round(liquido_transitoria_simulado + liquido_cancelado_original, 2)
+    # So desconta a parte que ainda NAO tem o lancamento agregado de
+    # compensacao na Transitoria hoje -- esse lancamento (quando existe) ja
+    # entra em liquido_transitoria pela chave normal do canal; descontar
+    # liquido_cancelado_original inteiro por cima conta o mesmo debito 2x
+    # (achado real do Everton, FULL 14/09/2026, R$ 1.219,82 -- ver correcao
+    # 22/09/2026 na docstring de CHAVE_CANCELAMENTO_ORIGINAL).
+    liquido_cancelamento_agregado_transitoria = _cancelamento_agregado_transitoria(transitoria, chave)
+    ajuste_cancelamento_nao_coberto = round(
+        liquido_cancelado_original - liquido_cancelamento_agregado_transitoria, 2
+    )
+    valor_transferencia = round(liquido_transitoria_simulado + ajuste_cancelamento_nao_coberto, 2)
     pronta_para_transferencia = alvo is not None and abs(valor_transferencia - alvo) < TOLERANCIA
 
     # Rebate: 2 formas de cair no RBX -- direto do ML (chave_cupom_rebate,
@@ -278,6 +318,10 @@ def conferir(canal, alvo, pasta_auxiliar, rebate_total=None):
         "liquido_cancelado_original": liquido_cancelado_original,
         "qtd_cancelado_original": qtd_cancelado_original,
         "cancelados_original": cancelados_original,
+        # Parte do cancelamento que o lancamento agregado na Transitoria ja
+        # cobre hoje (0 quando ainda nao foi lancado) -- ver correcao
+        # 22/09/2026 acima de CHAVE_CANCELAMENTO_ORIGINAL.
+        "liquido_cancelamento_agregado_transitoria": liquido_cancelamento_agregado_transitoria,
         "valor_transferencia": valor_transferencia,
         # Valor liquido ja lancado por pedido em cada conta (PED_MKP ou
         # DOCUMENTO, ver _valores_lancados) -- usado pro dashboard mostrar,
@@ -383,14 +427,18 @@ if __name__ == "__main__":
         assert r["qtd_ra"] == 1, r
 
         # Cancelamento pedido-a-pedido na Original (mesma linha CAN-REC ja
-        # usada acima em valores_rb, saida 10.0, pedido "1") -- detectada
-        # tambem como cancelamento e usada pra ajustar o valor de
-        # transferencia (-12.0 + -10.0 = -22.0, ainda mais longe do alvo
-        # 100.0 -- pronta_para_transferencia continua False).
+        # usada acima em valores_rb, saida 10.0, pedido "1"). Esse fixture ja
+        # tem o lancamento agregado de compensacao ("MKP_FULL_CANCELAMENTO")
+        # nos 2 lados (Original +10 e Transitoria -10) -- o -10 da Transitoria
+        # ja esta dentro de liquido_transitoria (-5.0 acima), entao NAO
+        # desconta de novo: valor_transferencia = liquido_transitoria_simulado
+        # sozinho (-12.0), nao -22.0 (correcao 22/09/2026 -- a versao antiga
+        # deste teste tinha o mesmo bug real do Everton, FULL 14/09/2026).
         assert r["liquido_cancelado_original"] == -10.0, r
         assert r["qtd_cancelado_original"] == 1, r
         assert r["cancelados_original"] == [("1", -10.0)], r
-        assert r["valor_transferencia"] == -22.0, r
+        assert r["liquido_cancelamento_agregado_transitoria"] == -10.0, r  # ja coberto
+        assert r["valor_transferencia"] == -12.0, r
 
         assert not bool(conferir("FULL", alvo=999.0, pasta_auxiliar=tmp)["original_bate"])
         assert conferir("XPTO", alvo=100.0, pasta_auxiliar=tmp) is None  # canal sem chave
@@ -492,10 +540,36 @@ if __name__ == "__main__":
         assert abs(r5["liquido_transitoria_simulado"] - 100.0) >= 0.01  # bruto NAO bate sozinho
         assert r5["liquido_cancelado_original"] == -20.0, r5
         assert r5["qtd_cancelado_original"] == 1, r5
-        # ajustado (120.0 + -20.0 = 100.0) bate exato -- pronta_para_transferencia
-        # usa esse valor, nao o bruto.
+        # sem lancamento agregado na Transitoria ainda (nenhuma linha
+        # "CANCELAMENTO" no fixture) -- desconta o cancelado INTEIRO, igual
+        # antes: ajustado (120.0 + -20.0 = 100.0) bate exato.
+        assert r5["liquido_cancelamento_agregado_transitoria"] == 0.0, r5
         assert r5["valor_transferencia"] == 100.0, r5
         assert bool(r5["pronta_para_transferencia"]), r5
+
+    # Achado real do Everton (FULL 14/09/2026, R$ 1.219,82): 2 CAN-REC na
+    # Original (707.55 + 512.27) JA compensados hoje pelo lancamento agregado
+    # "MKP_MELI_FU_CANCELAMENTOS" nos 2 lados (credito na Original, debito na
+    # Transitoria) -- o debito da Transitoria ja esta em liquido_transitoria,
+    # entao NAO desconta de novo: valor_transferencia = a Transitoria bruta,
+    # que ja bate com o alvo (calendario "0,00" de diferenca).
+    with tempfile.TemporaryDirectory() as tmp8:
+        _escrever(os.path.join(tmp8, "rb.xlsx"), "103925", [
+            ("CAN-REC MKP MKP_MELI_FU REF PARC 1", 0, 707.55, "1", "1"),
+            ("CAN-REC MKP MKP_MELI_FU REF PARC 1", 0, 512.27, "2", "2"),
+            ("MKP_MELI_FU_CANCELAMENTOS", 1219.82, 0, "121982", ""),
+        ])
+        _escrever(os.path.join(tmp8, "rbx.xlsx"), "X103925", [
+            ("REC MKP MKP_MELI_FU REF PARC 1", 622068.27, 0, "3", "3"),
+            ("MKP_MELI_FU_CANCELAMENTOS", 0, 1219.82, "121982", ""),
+        ])
+        r8 = conferir("FULL", alvo=620848.45, pasta_auxiliar=tmp8)
+        assert r8["liquido_cancelado_original"] == -1219.82, r8
+        assert r8["qtd_cancelado_original"] == 2, r8
+        assert r8["liquido_cancelamento_agregado_transitoria"] == -1219.82, r8
+        assert r8["liquido_transitoria_simulado"] == 620848.45, r8
+        assert r8["valor_transferencia"] == 620848.45, r8  # NAO 619628.63 (desconto duplicado)
+        assert bool(r8["pronta_para_transferencia"]), r8
 
     # conferir_pedidos: comparativo pedido a pedido sem chave_rbx (canal tipo
     # ES, ainda sem chave confirmada) -- filtra so pelos pedidos pedidos,
