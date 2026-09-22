@@ -27,7 +27,7 @@ import pandas as pd
 from agregador import agregar_por_pedido
 from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
-from conferir_rbx import conferir as conferir_rbx, conferir_pedidos
+from conferir_rbx import conferir as conferir_rbx, conferir_pedidos, rebate_lancado_por_pedido
 from cruzamento import cruzar_com_rb
 from descricoes_ml import gerar_descricoes_ml
 from enriquecer import enriquecer
@@ -152,7 +152,13 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
         ml_dados = carregar_descricoes_salvas(caminho_descricoes_existente)
         ml_de_cache = ml_dados is not None
 
-    resultado = enriquecer(resultado, raiz, ml_dados)
+    # Rebate ja movimentado na RBX hoje (credito normal ou cancelamento),
+    # por pedido -- so pra AVISAR na Fila VERIFICAR quando o Rebate que o
+    # scraper acha no ML/MP ja tem contrapartida no banco (ver
+    # enriquecer.py). None se rbx.xlsx ainda nao existe -- nao trava o dia
+    # a dia. Pedido do Everton, 22/09/2026.
+    rebate_lancado_rbx = rebate_lancado_por_pedido(canal, os.path.join(pasta_saida, "AUXILIAR"))
+    resultado = enriquecer(resultado, raiz, ml_dados, rebate_lancado_rbx)
     fila_verificar = _ordenar_fila_verificar(resultado)
     rebate_total = resultado.loc[resultado["STATUS"] == "REBATE", "REBATE"].sum()
     rebate_cmm = gerar_rebate_cmm(canal, resultado, raiz, data_ref, responsavel, rb)

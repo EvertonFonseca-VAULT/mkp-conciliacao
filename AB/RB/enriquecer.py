@@ -39,11 +39,22 @@ def _rebate_com_sinal_do_dif(dif, rebate, detalhe):
     return rebate_sinalizado, "\n".join(linhas)
 
 
-def enriquecer(resultado, raiz, ml_dados=None):
+def enriquecer(resultado, raiz, ml_dados=None, rebate_lancado_rbx=None):
     """`ml_dados`: {PEDIDO_MKP: resumo_pedido_ou_None} vindo de
     scraper_ml.resumir_pedidos -- so precisa ser passado pra pedidos
-    VERIFICAR (economiza tempo de scraping nos que ja bateram)."""
+    VERIFICAR (economiza tempo de scraping nos que ja bateram).
+
+    `rebate_lancado_rbx`: {PEDIDO_MKP: valor} vindo de
+    conferir_rbx.rebate_lancado_por_pedido -- pedidos VERIFICAR cujo Rebate
+    (achado pelo scraper na pagina do ML/MP) JA tem movimento na RBX hoje
+    (credito normal ou cancelamento). A pagina do ML/MP nao sabe que o banco
+    ja reverteu o cupom -- sem avisar, o Everton pode lancar/cancelar o
+    rebate de novo no CMM, contando o mesmo ajuste 2x (achado real, FULL
+    14/09/2026, pedido 2000018111220588: Rebate 136,16 ainda visivel no ML,
+    mas ja CANCELADO na RBX). NAO esconde o valor -- so avisa. Pedido do
+    Everton, 22/09/2026."""
     ml_dados = ml_dados or {}
+    rebate_lancado_rbx = rebate_lancado_rbx or {}
     df = resultado.copy()
 
     df["HIST_COMISSAO"] = f"{raiz}_COMISSAO"
@@ -83,8 +94,15 @@ def enriquecer(resultado, raiz, ml_dados=None):
         # status == VERIFICAR: aqui e onde o scraper ajuda de verdade
         dados = ml_dados.get(row["PEDIDO_MKP"])
 
+        ja_na_rbx = rebate_lancado_rbx.get(row["PEDIDO_MKP"])
+        aviso_rebate = (
+            f"⚠ Rebate desse pedido ja tem movimento na RBX hoje ({ja_na_rbx:.2f}) -- "
+            "conferir antes de lancar/cancelar rebate de novo no CMM (pode ja estar la, ver 'Cancelamento de rebate' "
+            "ou credito direto do ML na RBX). "
+        ) if ja_na_rbx else ""
+
         if not dados or "erro" in dados:
-            df.at[i, "ACAO_SUGERIDA"] = "Nao encontrado no ML/MP (ou erro na busca) -- confirmar numero do pedido manualmente."
+            df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + "Nao encontrado no ML/MP (ou erro na busca) -- confirmar numero do pedido manualmente."
             continue
 
         comissao = dados.get("comissao")
@@ -119,7 +137,7 @@ def enriquecer(resultado, raiz, ml_dados=None):
         df.at[i, "ML_DESCONTO_BONUS_DETALHE"] = dados.get("desconto_bonus_detalhe")
 
         if total is None:
-            df.at[i, "ACAO_SUGERIDA"] = "Achou o pedido mas nao consegui ler o Total -- conferir manualmente no ML/MP."
+            df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + "Achou o pedido mas nao consegui ler o Total -- conferir manualmente no ML/MP."
             continue
 
         hist_com, hist_rep = row["HIST_COMISSAO"], row["HIST_REPASSE"]
@@ -140,7 +158,7 @@ def enriquecer(resultado, raiz, ml_dados=None):
             # mesmo apos o estorno que a AB ja capturou como -921,84). Nao dar
             # uma ordem confiante de "baixar X" aqui -- e o Caso 2, exige
             # conferencia manual do Saldo do titulo.
-            df.at[i, "ACAO_SUGERIDA"] = (
+            df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + (
                 f"Sinal de estorno/cancelamento (repasse esperado pela AB e negativo: {repasse_ab:.2f}) -- "
                 f"NAO confiar direto no Total do ML/MP ({total:.2f}), pode ser o valor de antes de um ajuste "
                 f"posterior. Conferir o Saldo do titulo no TOTVS e seguir o processo de cancelamento "
@@ -149,19 +167,19 @@ def enriquecer(resultado, raiz, ml_dados=None):
             )
         elif row["TOTAL_RB"] == 0:
             if total == 0:
-                df.at[i, "ACAO_SUGERIDA"] = (
+                df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + (
                     "Reembolso total no ML/MP (Total = 0,00) -- conferir titulo no TOTVS: "
                     "se ja tiver algo lancado, cancelar/excluir; se nao tiver nada, nao lancar."
                 )
             else:
-                df.at[i, "ACAO_SUGERIDA"] = (
+                df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + (
                     f"Pedido nunca lancado -- baixar Comissao {comissao_liquida:.2f}{nota_desconto} "
                     f"({hist_com}, MERC PAGO, sem banco) e Repasse {repasse_a_baixar:.2f} "
                     f"({hist_rep}, NORMAL, banco {banco})."
                     + (f" Rebate de {rebate_abs:.2f} (ja EXCLUIDO do repasse acima) vai pro CMM (lote)." if rebate_abs else "")
                 )
         else:
-            df.at[i, "ACAO_SUGERIDA"] = (
+            df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + (
                 f"Ja tem lancamento no banco mas nao bate -- conferir Saldo do titulo no TOTVS. "
                 f"Valor correto segundo o ML/MP: Comissao {comissao_liquida:.2f}{nota_desconto} ({hist_com}) e "
                 f"Repasse {repasse_a_baixar:.2f} ({hist_rep}, banco {banco}). "
@@ -184,6 +202,11 @@ if __name__ == "__main__":
          "REPASSE": 374.27, "TOTAL_RB": 0.0, "DIF": 374.27},
         {"STATUS": "VERIFICAR", "PEDIDO_MKP": "999",
          "REPASSE": -50.0, "TOTAL_RB": 0.0, "DIF": -50.0},
+        # Achado real (FULL 14/09/2026, pedido 2000018111220588): Rebate
+        # ainda aparece na pagina do ML, mas ja foi CANCELADO na RBX hoje --
+        # tem que avisar, sem esconder o valor.
+        {"STATUS": "VERIFICAR", "PEDIDO_MKP": "2000018111220588",
+         "REPASSE": -737.61, "TOTAL_RB": 0.0, "DIF": -737.61},
     ])
     ml_dados = {
         "47818962330": {
@@ -197,8 +220,14 @@ if __name__ == "__main__":
             "rebate": 50.0,  # Mercado mostra positivo, mas DIF e negativo
             "rebate_detalhe": "Recebimento pelo desconto da sua contraparte: 50,00",
         },
+        "2000018111220588": {
+            "comissao": -130.44, "envio": -212.85, "desconto_bonus": None, "total": 595.71,
+            "rebate": 136.16,
+            "rebate_detalhe": "Recebimento pelo desconto da sua contraparte: 136,16",
+        },
     }
-    df = enriquecer(resultado, "MKP_MELI_FU", ml_dados)
+    rebate_lancado_rbx = {"2000018111220588": -136.16}  # CAN- na RBX (ja cancelado)
+    df = enriquecer(resultado, "MKP_MELI_FU", ml_dados, rebate_lancado_rbx)
     linha = df.iloc[0]
     assert linha["ML_DESCONTO_BONUS"] == 11.95, linha["ML_DESCONTO_BONUS"]
     assert linha["ML_COMISSAO_LIQUIDA"] == 67.73, linha["ML_COMISSAO_LIQUIDA"]
@@ -213,4 +242,11 @@ if __name__ == "__main__":
     linha2 = df.iloc[1]
     assert linha2["ML_REBATE"] == -50.0, linha2["ML_REBATE"]  # DIF negativo -> rebate negativo
     assert linha2["ML_REBATE_DETALHE"] == "Recebimento pelo desconto da sua contraparte: -50,00", linha2["ML_REBATE_DETALHE"]
+    assert "⚠" not in linha2["ACAO_SUGERIDA"], linha2["ACAO_SUGERIDA"]  # sem entrada em rebate_lancado_rbx -- sem aviso
+
+    linha3 = df.iloc[2]
+    assert linha3["ML_REBATE"] == -136.16, linha3["ML_REBATE"]  # DIF negativo -> rebate negativo
+    assert "⚠" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]  # ja cancelado na RBX -- avisa
+    assert "-136.16" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]
+    assert "Sinal de estorno/cancelamento" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]  # aviso NAO troca a acao, so avisa antes
     print("enriquecer.py: ok")

@@ -215,6 +215,32 @@ def _valores_lancados_por_pedidos(df, pedidos):
     return {k: round(v, 2) for k, v in liquido.items() if k}
 
 
+def rebate_lancado_por_pedido(canal, pasta_auxiliar):
+    """Rebate (cupom direto do ML ou lancamento manual no CMM) ja
+    movimentado na RBX HOJE, por pedido -- inclui tanto um credito normal
+    quanto um cancelamento (CAN-...), o que importa e que ja existe
+    QUALQUER movimento la. Usa _valores_lancados (mesma logica de sempre,
+    so filtrada pelas chaves de rebate do canal). None se rbx.xlsx ainda nao
+    existe.
+
+    Serve pra avisar na Fila VERIFICAR quando o Rebate que o scraper acha na
+    pagina do ML/MP ja tem contrapartida na RBX -- nao lancar de novo (ver
+    enriquecer.py, parametro rebate_lancado_rbx). Achado real do Everton,
+    FULL 14/09/2026: pedido 2000018111220588 (VERIFICAR) com Rebate 136,16
+    ainda visivel na pagina do ML, mas ja CANCELADO na RBX (o cupom tinha
+    sido creditado direto pelo ML em outro dia e foi revertido hoje, pedido
+    entrou em disputa) -- lancar de novo dobraria o ajuste. Pedido do
+    Everton, 22/09/2026."""
+    cfg = CANAIS.get(canal, {})
+    prefixo_mov = cfg.get("prefixo_mov")
+    chaves = [cfg.get("chave_cupom_rebate"), f"{prefixo_mov}_{MOTIVO_REBATE}" if prefixo_mov else None]
+    chaves = [c for c in chaves if c]
+    caminho_rbx = os.path.join(pasta_auxiliar, "rbx.xlsx")
+    if not chaves or not os.path.exists(caminho_rbx):
+        return None
+    return _valores_lancados(carregar_rb(caminho_rbx), chaves)
+
+
 def conferir_pedidos(pasta_auxiliar, pedidos):
     """Comparativo pedido a pedido (valores_rb/valores_rbx), SEM depender do
     chave_rbx do canal -- serve pra liberar esse comparativo (semaforo +
@@ -574,6 +600,13 @@ if __name__ == "__main__":
         assert r9c["liquido_rebate_rbx"] == 10.0, r9c
         assert r9c["liquido_rebate_cancelado_rbx"] == -15.0, r9c
         assert bool(r9c["rebate_bate"]), r9c
+
+        # rebate_lancado_por_pedido: usado pelo enriquecer.py pra avisar na
+        # Fila VERIFICAR (ver enriquecer.py, parametro rebate_lancado_rbx) --
+        # por pedido, inclui tanto credito normal quanto cancelamento.
+        por_pedido = rebate_lancado_por_pedido("FULL", tmp9c)
+        assert por_pedido == {"1": 25.0, "2000018111220588": -15.0}, por_pedido
+    assert rebate_lancado_por_pedido("FULL", tmp9c + "_nada") is None  # sem rbx.xlsx
 
     # Cenario real (FULL 09/09/2026): pedido lancado (e ja transferido) num
     # dia ANTERIOR, cancelado HOJE -- so o debito residual fica na
