@@ -195,6 +195,17 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - Nenhuma credencial no código; o Koncili lê usuário e senha do ambiente.
 - Documentação completa do código: nota **Documentação do Código - Conciliação Mercado** no Obsidian (vault `Manuais`).
 
+## Qualidade e auditoria do processo
+
+Processo financeiro sem CI/QA dedicado — a segurança vem de disciplina no próprio código, não de ferramenta externa:
+
+- **Autoteste em cada módulo**: 26 dos 37 arquivos `.py` têm um bloco `__main__` com `assert` (387 no total) que roda sozinho — `python cruzamento.py`, `python dashboard.py` etc. imprimem `"<arquivo>: ok"` ou quebram na hora, sem precisar de framework de teste. Regra: lógica não trivial (branch, loop, parser, caminho de dinheiro) não é considerada pronta sem esse autoteste.
+- **Validação contra dado real, não só teoria**: mais de 20 comentários no código documentam "achado real"/"confirmado com dado real" — casos em que a lógica foi comparada pedido a pedido contra o TOTVS/Koncili/ML antes de ser aceita (ex.: o achado do `ids.py` que motivou o commit `37e9f16`, ou o `MEDIACAO` removido dos STATUS em `cruzamento.py` depois de um pedido real que "batia por construção" sem nunca ter sido lançado).
+- **Guarda-corpos que travam antes de processar errado**: `canais.validar_data_rb` recusa rodar se o RB exportado for de outro dia (senão o cruzamento zera TOTAL_RB pra quase todo mundo e vira uma fila VERIFICAR gigante e falsa); `interativo.py` exige `Dt.Ref` do dia em `rb.xlsx`/`rbx.xlsx`/`CONCILIADOR_RB.xlsx` antes de aceitar rodar.
+- **Fila VERIFICAR como rede de segurança**: nada que não bateu automaticamente (REBATE/SEM DIFF/EST COM) sai do radar — cai em VERIFICAR pra conferência manual em vez de ser dado como resolvido por engano (foi assim que o STATUS MEDIACAO foi descartado, 22/09/2026).
+- **Correção pela raiz, não pelo sintoma**: bug corrigido na função compartilhada que todos os canais usam (não só onde o sintoma apareceu) — antes de mexer, todos os usos da função são checados (`grep`) pra decidir o alcance certo do fix. Config por canal também é centralizada num único lugar (`canais.py`, `CANAIS_KONCILI`, `CANAIS_PP`) desde 16-18/09/2026, exatamente pra evitar que os mesmos dados divirjam em dicts espalhados sem ninguém notar.
+- **Commit revisado, nunca em lote às cegas**: cada commit é conferido por `git diff` antes do `git add` e fica restrito aos arquivos da mudança em questão — mudanças pendentes de outra frente de trabalho não entram junto só porque estavam no working tree.
+
 ## Setup
 
 ```bash
