@@ -25,7 +25,7 @@ outra diferenca sem explicacao confirmada.
 import numpy as np
 import pandas as pd
 
-from ids import limpar_id
+from ids import limpar_pedido_ab
 
 # NAO CONFIRMADO: o texto exato de DESCRIPTION para linhas de mediacao pode
 # vir como "mediation" (ingles, visto em linhas residuais geradas pelo
@@ -45,7 +45,7 @@ def cruzar_com_rb(agregado, rb, para_processar):
     rb_por_pedido["TOTAL_RB"] = rb_por_pedido["ENTRADA"] + rb_por_pedido["SAIDA"]
 
     para_processar = para_processar.copy()
-    para_processar["EXTERNAL_REFERENCE"] = para_processar["EXTERNAL_REFERENCE"].apply(limpar_id)
+    para_processar["EXTERNAL_REFERENCE"] = para_processar["EXTERNAL_REFERENCE"].apply(limpar_pedido_ab)
 
     rebate = para_processar.groupby("EXTERNAL_REFERENCE")["COUPON_AMOUNT"].sum()
 

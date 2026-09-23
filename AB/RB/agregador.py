@@ -4,12 +4,12 @@ AB_MERCADO_TOTVS.xlsm (aba Planilha1)."""
 
 import pandas as pd
 
-from ids import limpar_id
+from ids import limpar_pedido_ab
 
 
 def agregar_por_pedido(para_processar):
     para_processar = para_processar.copy()
-    para_processar["EXTERNAL_REFERENCE"] = para_processar["EXTERNAL_REFERENCE"].apply(limpar_id)
+    para_processar["EXTERNAL_REFERENCE"] = para_processar["EXTERNAL_REFERENCE"].apply(limpar_pedido_ab)
 
     grupo = para_processar.groupby("EXTERNAL_REFERENCE", dropna=False)
 
