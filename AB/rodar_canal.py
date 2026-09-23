@@ -1,4 +1,4 @@
-"""Para Processar dos canais FULL, ES, MOVEIS, ELETRO, CENTER e CO05, num comando so.
+"""Para Processar dos canais FULL, ES, MOVEIS, ELETRO, CENTER, CO05 e PRIME, num comando so.
 Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
 
   FULL    TOTVS/SRI + PTI (750+751)    -> PROCESSAR\\FULL\\PROCESSAR_MERCADO FULL dd.mm.aaaa.xlsx (igual rodar_full.py)
@@ -8,9 +8,15 @@ Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
   CENTER  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\CENTER\\PROCESSAR_MERCADO CENTER dd.mm.aaaa.xlsx (vendedor 944)
   CO05    TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS CO05\\PROCESSAR_MERCADO COLETAS CO05 dd.mm.xlsx (vendedor 847,
           mesmo layout de 60 colunas do ES, so em ordem diferente -- processar_es.carregar_ab ja reordena sozinho)
+  PRIME   TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\PRIME\\PROCESSAR_MERCADO PRIME dd.mm.aaaa.xlsx (vendedor 657,
+          adicionado 23/09/2026 -- frete=False confirmado contra o calendario, ver validacao abaixo)
 
 Validado em 19-20/09/2026: MOVEIS 04.09 e ELETRO 04.09 contra os arquivos manuais,
 ES 01-10.09 (ver rodar_es.py) e H:M de todos os dias contra o calendario/Koncili.
+PRIME validado em 23/09/2026, 5 dias (11, 14, 16, 17 e 18.09.2026): H:M do
+Para Processar = RESULTADO do Koncili = VALOR_EB do calendario, os 3 batendo
+exato nos 5 dias (confirma de quebra que frete=False estava certo -- se
+estivesse errado o H:M teria vindo diferente dos outros dois).
 
 Uso:
     python rodar_canal.py FULL 22.09.2026                    # 1 canal, 1 dia unico
@@ -52,6 +58,11 @@ CANAIS_PP = {
                    saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "CENTER"), saida_prefixo="PROCESSAR_MERCADO CENTER", ano_no_nome=True),
     "CO05": dict(ab_pasta="COLETAS CO05", ab_prefixo="MERCADO COLETAS CO05", ab_sub="", pti=r"C:\TEMP\PTI COLETAS 05.csv", frete=True,
                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "COLETAS CO05"), saida_prefixo="PROCESSAR_MERCADO COLETAS CO05", ano_no_nome=False),
+    # PRIME: PTI chegou 23/09/2026 (vendedor 657) -- frete=False (loja propria,
+    # nao e canal de coleta), confirmado com dado real no mesmo dia: H:M = Koncili
+    # = calendario nos 5 dias testados (11, 14, 16, 17 e 18.09.2026).
+    "PRIME": dict(ab_pasta="PRIME", ab_prefixo="MERCADO PRIME", ab_sub="", pti=r"C:\TEMP\PTI_PRIME.csv", frete=False,
+                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "PRIME"), saida_prefixo="PROCESSAR_MERCADO PRIME", ano_no_nome=True),
 }
 
 
