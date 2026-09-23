@@ -24,7 +24,8 @@ Regra de validação em todos os canais: **H:M do Para Processar = RESULTADO do 
 | MOVEIS | `WEBCO MÓVEIS` | 755 | `C:\TEMP\PTI MOVEIS.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MOVEIS` |
 | ELETRO | `WEBCO ELETRO` | 756 | não usa | não | `C:\RODAR TOTVS\ELETRODOMESTICO` |
 | CENTER | `CONTINENTALCENTER` | 944 | `C:\TEMP\PTI CENTER.csv` | não | `C:\RODAR TOTVS\PROCESSAR\CENTER` |
-| PRIME, WEB | `WEBCOPRIME`, `WEB CONTINENTAL` | — | — | — | só baixa o AB (WEB em implantação) |
+| COLETAS CO05 | `LTWE20240219130512` | 847 | `C:\TEMP\PTI COLETAS 05.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\COLETAS CO05` |
+| PRIME, WEB | `WEBCOPRIME`, `WEB CONTINENTAL` | — | — | — | só baixa o AB (implantação, sem Para Processar automatizado ainda) |
 
 Nos códigos de vendedor, o PTI usa `000` na frente (`000755`); CMM/MOV usam sem zeros.
 
@@ -35,7 +36,7 @@ Mkp/
 ├── requirements.txt
 └── AB/
     ├── koncili.py            # login no Koncili, acha o repasse, lê o RESULTADO, baixa o AB e confere com o calendário
-    ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS, ELETRO e CENTER (ou TODOS) num comando
+    ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS, ELETRO, CENTER e COLETAS CO05 (ou TODOS) num comando
     ├── empilhar.py           # empilhado FULL/ES: ensaio + gravação (com backup em C:\BACKUP EMPILHADO)
     ├── empilhar_gravar.py    # grava as linhas novas direto no XML do xlsx, sem duplicar dias
     ├── pipeline.py           # execução por lote do FULL com status em SQLite (só FULL)
@@ -46,7 +47,7 @@ Mkp/
     └── RB/                   # conciliação com o RB, classificação e dashboard
 ```
 
-Layouts do AB bruto: FULL 40 colunas · ES 60 · CENTER/WEB 35 · MOVEIS/ELETRO 43 ou 48 (português).
+Layouts do AB bruto: FULL 40 colunas · ES/CO05 60 · CENTER/WEB 35 · MOVEIS/ELETRO 43 ou 48 (português).
 
 ## Uso diário
 
