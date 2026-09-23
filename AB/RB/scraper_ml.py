@@ -36,30 +36,43 @@ from Screaper import (  # noqa: E402
 from classificar_ml import resumir_linhas  # noqa: E402
 
 
+def _buscar_ml(numero, context):
+    page = encontrar_aba_mercadolivre(context)
+    if page is None:
+        page = context.new_page()
+    html = buscar_e_abrir_ultimo_resultado_ml(page, numero)
+    dados = extrair_dados_detalhe_ml(html) if html else None
+    return resumir_linhas(dados["linhas"], plataforma="ML", pedido_ml=dados["pedido"]) if dados else None
+
+
+def _buscar_mp(numero, context):
+    page = encontrar_aba_mercadopago(context)
+    if page is None:
+        return None
+    html = buscar_e_abrir_ultimo_resultado_mp(page, numero)
+    dados = extrair_dados_detalhe_mp(html) if html else None
+    return resumir_linhas(dados["linhas"], plataforma="MP", pedido_ml=dados["pedido"]) if dados else None
+
+
 def resumo_pedido(numero, context):
     """`numero` = SHIPPING_ID (ML, comeca com "4") ou EXTERNAL_REFERENCE
-    (Mercado Pago, os demais). Retorna None se nao encontrar nada."""
+    (Mercado Pago, os demais). Retorna None se nao encontrar nada.
+
+    Fallback (22/09/2026, pedido do Everton): quando `numero` NAO comeca
+    com "4" e a busca no MP nao acha nada, tenta de novo o MESMO numero
+    como SHIPPING_ID na pagina do ML antes de desistir -- alguns pedidos
+    resolvidos via SRI (ver processar_full.gerar_para_processar) chegam
+    aqui com um SHIPPING_ID que nao bate no padrao "comeca com 4", entao a
+    escolha ML/MP so pelo prefixo deixava esses sem tentar o ML nunca.
+    Quando `numero` ja comeca com "4" nao ha fallback melhor (ja e a
+    tentativa certa)."""
     numero = str(numero).strip()
 
     if numero.startswith("4"):
-        page = encontrar_aba_mercadolivre(context)
-        if page is None:
-            page = context.new_page()
-        html = buscar_e_abrir_ultimo_resultado_ml(page, numero)
-        dados = extrair_dados_detalhe_ml(html) if html else None
-        plataforma = "ML"
-    else:
-        page = encontrar_aba_mercadopago(context)
-        if page is None:
-            return None
-        html = buscar_e_abrir_ultimo_resultado_mp(page, numero)
-        dados = extrair_dados_detalhe_mp(html) if html else None
-        plataforma = "MP"
+        return _buscar_ml(numero, context)
 
-    if not dados:
-        return None
-
-    return resumir_linhas(dados["linhas"], plataforma=plataforma, pedido_ml=dados["pedido"])
+    resumo = _buscar_mp(numero, context)
+    return resumo if resumo is not None else _buscar_ml(numero, context)
 
 
 def _barra(feitos, total, pedido, largura=30):

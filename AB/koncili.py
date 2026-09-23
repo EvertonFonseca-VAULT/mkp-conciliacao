@@ -58,12 +58,16 @@ CANAIS_KONCILI = {
     # Contas descobertas casando RESULTADO x calendario (valor E dia, 11-12 dias
     # cada, 19/09/2026) -- nao pelo nome. FULL: o export do Koncili (40 colunas)
     # e identico ao do X:, so a aba vira "Relatorio". CENTER/WEB: gravam no
-    # layout de 35 colunas do X:. CO05 so confere (o X: usa 48 colunas em
-    # portugues e o Everton pediu pra nao mexer nessa pasta).
+    # layout de 35 colunas do X:.
     "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "aba": "Relatorio"},
     "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "aba": "Plan1", "colunas": COLUNAS_CENTER},
     "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "aba": "Planilha1", "colunas": COLUNAS_WEB},
-    "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05", "salvar": False},
+    # CO05: achado 23/09/2026 -- o X: usa o MESMO layout de 60 colunas do ES
+    # (so ordem diferente, aba "Sheet0"), nao "48 colunas em portugues" como
+    # se pensava antes. Sem "aba"/"colunas" (igual ES): salva a "Sheet0" do
+    # jeito que o Koncili exporta, sem reajuste -- processar_es.carregar_ab
+    # ja reordena as 60 colunas sozinho. "salvar" removido (era False).
+    "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05"},
 }
 
 

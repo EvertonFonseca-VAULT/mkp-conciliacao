@@ -1081,6 +1081,24 @@ _JS = r"""
     if (abaSalva && document.getElementById(abaSalva)) { ativarAba(abaSalva); }
   } catch (e) {}
 
+  // Scroll da fila VERIFICAR persiste em localStorage (chave separada de
+  // CHAVE) -- mesmo motivo da aba acima: o reload do visibilitychange
+  // (logo abaixo) sempre voltava pro topo da tabela, perdendo o lugar que
+  // o Everton estava conferindo. So existe quando ha fila (ver
+  // .tabela-scroll em _linhas_tabela/verificar_qtd). Pedido do Everton,
+  // 22/09/2026.
+  var CHAVE_SCROLL = CHAVE + "_scroll";
+  var scrollFila = document.querySelector(".tabela-scroll");
+  if (scrollFila) {
+    try {
+      var posSalva = parseInt(localStorage.getItem(CHAVE_SCROLL), 10);
+      if (!isNaN(posSalva)) scrollFila.scrollTop = posSalva;
+    } catch (e) {}
+    scrollFila.addEventListener("scroll", function () {
+      try { localStorage.setItem(CHAVE_SCROLL, scrollFila.scrollTop); } catch (e) {}
+    });
+  }
+
   // Volta pra essa aba do navegador (depois de rodar o processo de novo,
   // outro canal ou nao) -> recarrega sozinho, sem precisar abrir outro link.
   document.addEventListener("visibilitychange", function () {
@@ -1192,7 +1210,7 @@ _JS = r"""
 
     var linhasMov = marcados.map(function (chk) {
       return [
-        DATA_LACTO, chk.dataset.natureza, "'" + chk.dataset.pedido, VENDEDOR,
+        DATA_LACTO, chk.dataset.natureza, chk.dataset.pedido, VENDEDOR,
         chk.dataset.banco, chk.dataset.agencia, chk.dataset.conta,
         chk.dataset.historico, chk.dataset.valor
       ].join("\t");
@@ -1710,6 +1728,12 @@ if __name__ == "__main__":
         assert 'localStorage.setItem(CHAVE_ABA, botao.dataset.aba)' in conteudo
         assert 'localStorage.getItem(CHAVE_ABA)' in conteudo
 
+        # Scroll da fila VERIFICAR persiste em localStorage (mesmo motivo da
+        # aba acima). Pedido do Everton, 22/09/2026.
+        assert 'var CHAVE_SCROLL = CHAVE + "_scroll";' in conteudo
+        assert 'scrollFila.addEventListener("scroll"' in conteudo
+        assert 'localStorage.setItem(CHAVE_SCROLL, scrollFila.scrollTop)' in conteudo
+
         # Marcacao de NATUREZA persiste em localStorage (chave separada de
         # CHAVE, pra sobreviver ao reload do visibilitychange ao trocar de
         # aba) -- confere so que o JS foi gerado sem quebrar escape de
@@ -1720,12 +1744,11 @@ if __name__ == "__main__":
         assert conteudo.count("atualizarNatureza()") >= 1  # chamada de bootstrap no fim da IIFE
         assert '].join("\\t")' in conteudo and 'join("\\n")' in conteudo  # tab e quebra de linha no JS
 
-        # MOV continua com apostrofo na frente do pedido (coluna Geral, vira
-        # notacao cientifica sem isso). CMM tira: a coluna PEDIDO MKP / CV ja
-        # e Texto la, o apostrofo ficava literal na celula e quebrava o
-        # import no TOTVS (Everton, 22/09/2026).
-        assert '"\'" + chk.dataset.pedido, VENDEDOR,' in conteudo  # linhasMov
-        assert conteudo.count("\"'\" + chk.dataset.pedido") == 1  # so no MOV, nao mais no CMM
+        # MOV nao usa mais apostrofo na frente do pedido -- nao precisa mais
+        # (Everton, 23/09/2026). CMM ja nao usava desde 22/09/2026 (a coluna
+        # PEDIDO MKP / CV ja e Texto na planilha).
+        assert 'chk.dataset.natureza, chk.dataset.pedido, VENDEDOR,' in conteudo  # linhasMov
+        assert "\"'\" + chk.dataset.pedido" not in conteudo  # apostrofo removido de vez (CMM e MOV)
 
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.

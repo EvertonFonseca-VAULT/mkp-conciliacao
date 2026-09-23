@@ -23,7 +23,8 @@ Regra de validação em todos os canais: **H:M do Para Processar = RESULTADO do 
 | ES | ver `CANAIS_KONCILI` | 763 | `C:\TEMP\PTI ES.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\COLETAS ES` |
 | MOVEIS | `WEBCO MÓVEIS` | 755 | `C:\TEMP\PTI MOVEIS.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MOVEIS` |
 | ELETRO | `WEBCO ELETRO` | 756 | não usa | não | `C:\RODAR TOTVS\ELETRODOMESTICO` |
-| PRIME, WEB, CENTER | `WEBCOPRIME`, `WEB CONTINENTAL`, `CONTINENTALCENTER` | — | — | — | só baixa o AB (WEB em implantação) |
+| CENTER | `CONTINENTALCENTER` | 944 | `C:\TEMP\PTI CENTER.csv` | não | `C:\RODAR TOTVS\PROCESSAR\CENTER` |
+| PRIME, WEB | `WEBCOPRIME`, `WEB CONTINENTAL` | — | — | — | só baixa o AB (WEB em implantação) |
 
 Nos códigos de vendedor, o PTI usa `000` na frente (`000755`); CMM/MOV usam sem zeros.
 
@@ -34,7 +35,7 @@ Mkp/
 ├── requirements.txt
 └── AB/
     ├── koncili.py            # login no Koncili, acha o repasse, lê o RESULTADO, baixa o AB e confere com o calendário
-    ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS e ELETRO (ou TODOS) num comando
+    ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS, ELETRO e CENTER (ou TODOS) num comando
     ├── empilhar.py           # empilhado FULL/ES: ensaio + gravação (com backup em C:\BACKUP EMPILHADO)
     ├── empilhar_gravar.py    # grava as linhas novas direto no XML do xlsx, sem duplicar dias
     ├── pipeline.py           # execução por lote do FULL com status em SQLite (só FULL)
@@ -57,8 +58,9 @@ python koncili.py ES 22.09.2026                  # só confere
 python koncili.py ELETRO 22.09.2026 --salvar     # grava no X: (não sobrescreve)
 
 # 2. Para Processar (não sobrescreve sem --forcar)
-python rodar_canal.py TODOS 22.09.2026
-python rodar_canal.py FULL 11.09.2026 18.09.2026
+python rodar_canal.py FULL 22.09.2026                       # 1 canal, 1 dia único
+python rodar_canal.py TODOS 22.09.2026                      # todos os canais, 1 dia
+python rodar_canal.py FULL 11.09.2026 14.09.2026 18.09.2026 # 1 canal, vários dias — lista cada data (não é intervalo)
 
 # 3. Empilhado FULL / ES
 python empilhar.py FULL 22.09.2026                       # ensaio local
@@ -109,8 +111,8 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `soma_ab`, `caminho_destino(canal, data)`, `_ajustar_layout` (aba e colunas no padrão do X:; CENTER/WEB usam `COLUNAS_WEB`, 35 colunas), `conferir(...)` (AB × RESULTADO × calendário).
 - Contas em `CANAIS_KONCILI`. Nunca imprimir token ou sessão em log.
 
-**`AB/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO ou TODOS).
-- `CANAIS_PP`: configuração por canal (pasta e prefixo do AB, PTI, frete, pasta e nome de saída, ano no nome).
+**`AB/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO, CENTER ou TODOS).
+- `CANAIS_PP`: configuração por canal (pasta e prefixo do AB, PTI, frete, pasta e nome de saída, ano no nome). CENTER adicionado 22/09/2026 (vendedor 944, PTI `C:\TEMP\PTI CENTER.csv`, sem frete — mesmo molde do MOVEIS).
 - `caminhos(canal, data)`: devolve o AB de entrada e o nome do arquivo de saída.
 - `processar(canal, data, pasta_saida, forcar)`: FULL usa `rodar_full.rodar` (2 vendedores no PTI); os demais usam `rodar_es.rodar`. Grava a aba "Para Processar" e imprime linhas, H:M e quantos "Verificar". Não sobrescreve sem `--forcar`.
 - `main(argv)`: se o AB de um canal não está no X:, avisa e segue com os outros.
@@ -139,7 +141,7 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `empilhar_gravar.py`: acrescenta direto no XML do .xlsx (arquivo de 400+ MB; o openpyxl perderia os valores em cache das fórmulas). Textos como `inlineStr`, remove `calcChain`, corrige SEQUENCIA na cauda e acrescenta uma linha por dia na aba CALENDÁRIO. Backup em `C:\BACKUP EMPILHADO` antes de publicar. Rodar de novo com um dia já empilhado não duplica.
 - Nunca abrir e regravar o empilhado com openpyxl.
 
-**`AB/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard.
+**`AB/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard. Diferente do lote "manual" do `rodar_canal.py` (lista de datas na linha de comando, sem persistir nada) — este rastreia status (pendente/rodado/erro) por lote no banco. Só existe pro FULL.
 
 ### Frente Conciliação (`AB/RB`)
 
@@ -159,7 +161,7 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `ids.py`: `limpar_id` (sem `.0`).
 
 **Scraper ML/MP**
-- `scraper_ml.py`: `resumo_pedido(numero, context)` (SHIPPING_ID do ML começa com "4"; senão usa EXTERNAL_REFERENCE/MP) e `resumir_pedidos` (progresso e tentativas). Usa Chrome com debug remoto (porta 9222, `abrir_chrome_debug.bat`).
+- `scraper_ml.py`: `resumo_pedido(numero, context)` (SHIPPING_ID do ML começa com "4"; senão usa EXTERNAL_REFERENCE/MP — se o MP não achar nada, tenta de novo o mesmo número como SHIPPING_ID no ML antes de desistir, 22/09/2026) e `resumir_pedidos` (progresso e tentativas). Usa Chrome com debug remoto (porta 9222, `abrir_chrome_debug.bat`).
 - `classificar_ml.py`: sem playwright; classifica linhas (comissão, envio, rebate, desconto/bônus) por substring.
 - `descricoes_ml.py`: guarda todas as linhas raspadas em `descricoes_ml_<canal>_<data>.xlsx`.
 
@@ -174,7 +176,8 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `_linhas_tabela`: colunas da fila VERIFICAR, na ordem `Aj. | RBX | RB | Dif. extrato | AB total | Pedido | Descrição | DIF | Frete | Comissão | BANCO | [Marcação] | Desc/Bônus | Repasse | Rebate`. O cabeçalho (`<thead>`) fica na mesma função e tem que seguir a mesma ordem.
 - BANCO = RBX + DIF (sem RBX, só a DIF). Frete aparece em valor absoluto quando a DIF é positiva. Frete, Comissão e BANCO copiam ao clicar (`_valor_copia`: vírgula decimal, sem milhar, ex.: `586,94`).
 - Naturezas marcáveis, que geram linhas CMM e MOV na gaveta do rodapé: Frete 2209, Tarifa 2804 e Rebate 1107, todas na conta X103925, banco 237, agência 3708.
-- `localStorage`: `ajustados_<canal>_<data>` (+ `_aba`, `_natureza`, `_natureza_extra`, `_drawer`) e `concfull:tema`.
+- Scroll da fila VERIFICAR persiste em `localStorage` (22/09/2026): sobrevive ao reload automático do `visibilitychange`.
+- `localStorage`: `ajustados_<canal>_<data>` (+ `_aba`, `_natureza`, `_natureza_extra`, `_drawer`, `_scroll`) e `concfull:tema`.
 - Autoteste: `python dashboard.py` → `dashboard.py: ok`.
 
 ## Cuidados conhecidos

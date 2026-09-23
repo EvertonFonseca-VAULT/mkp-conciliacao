@@ -1,19 +1,25 @@
-"""Para Processar dos canais FULL, ES, MOVEIS e ELETRO, num comando so.
+"""Para Processar dos canais FULL, ES, MOVEIS, ELETRO, CENTER e CO05, num comando so.
 Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
 
   FULL    TOTVS/SRI + PTI (750+751)    -> PROCESSAR\\FULL\\PROCESSAR_MERCADO FULL dd.mm.aaaa.xlsx (igual rodar_full.py)
   ES      TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS ES\\PROCESSAR_MERCADO COLETAS ES dd.mm.xlsx
   MOVEIS  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\MOVEIS\\PROCESSAR_MERCADO MOVEIS dd.mm.aaaa.xlsx
   ELETRO  so TOTVS/SRI (sem PTI/frete) -> ELETRODOMESTICO\\MERCADO ELETRODOMESTICO dd.mm.xlsx
+  CENTER  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\CENTER\\PROCESSAR_MERCADO CENTER dd.mm.aaaa.xlsx (vendedor 944)
+  CO05    TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS CO05\\PROCESSAR_MERCADO COLETAS CO05 dd.mm.xlsx (vendedor 847,
+          mesmo layout de 60 colunas do ES, so em ordem diferente -- processar_es.carregar_ab ja reordena sozinho)
 
 Validado em 19-20/09/2026: MOVEIS 04.09 e ELETRO 04.09 contra os arquivos manuais,
 ES 01-10.09 (ver rodar_es.py) e H:M de todos os dias contra o calendario/Koncili.
 
 Uso:
-    python rodar_canal.py FULL 11.09.2026 18.09.2026       # grava (nao sobrescreve)
-    python rodar_canal.py TODOS 22.09.2026                 # FULL, ES, MOVEIS e ELETRO do dia
-    python rodar_canal.py ES 11.09.2026 --saida C:\\temp    # grava em outra pasta
-    python rodar_canal.py ELETRO 11.09.2026 --forcar         # sobrescreve
+    python rodar_canal.py FULL 22.09.2026                    # 1 canal, 1 dia unico
+    python rodar_canal.py FULL 11.09.2026 18.09.2026         # 1 canal, varios dias -- lista cada data
+                                                               # (NAO e intervalo: dias que faltam no meio
+                                                               # ficam de fora, precisa listar um a um)
+    python rodar_canal.py TODOS 22.09.2026                   # FULL, ES, MOVEIS, ELETRO e CENTER do dia
+    python rodar_canal.py ES 11.09.2026 --saida C:\\temp      # grava em outra pasta
+    python rodar_canal.py ELETRO 11.09.2026 --forcar          # sobrescreve
 """
 
 import os
@@ -42,6 +48,10 @@ CANAIS_PP = {
                    saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MOVEIS"), saida_prefixo="PROCESSAR_MERCADO MOVEIS", ano_no_nome=True),
     "ELETRO": dict(ab_pasta="ELETRODOMESTICO", ab_prefixo="MERCADO ELETRODOMESTICO", ab_sub="", pti=None, frete=False,
                    saida=os.path.join(RODAR_TOTVS, "ELETRODOMESTICO"), saida_prefixo="MERCADO ELETRODOMESTICO", ano_no_nome=False),
+    "CENTER": dict(ab_pasta="CENTER", ab_prefixo="MERCADO CENTER", ab_sub="", pti=r"C:\TEMP\PTI CENTER.csv", frete=False,
+                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "CENTER"), saida_prefixo="PROCESSAR_MERCADO CENTER", ano_no_nome=True),
+    "CO05": dict(ab_pasta="COLETAS CO05", ab_prefixo="MERCADO COLETAS CO05", ab_sub="", pti=r"C:\TEMP\PTI COLETAS 05.csv", frete=True,
+                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "COLETAS CO05"), saida_prefixo="PROCESSAR_MERCADO COLETAS CO05", ano_no_nome=False),
 }
 
 
@@ -99,6 +109,10 @@ def _teste():
     ab, nome = caminhos("FULL", "11.09.2026")
     assert ab.endswith(r"FULL\2026\09.2026\MERCADO FULL 11.09.2026.xlsx") and nome == "PROCESSAR_MERCADO FULL 11.09.2026.xlsx"
     assert caminhos("ELETRO", "04.09.2026")[1] == "MERCADO ELETRODOMESTICO 04.09.xlsx"
+    ab, nome = caminhos("CENTER", "22.09.2026")
+    assert ab.endswith(r"CENTER\2026\09.2026\MERCADO CENTER 22.09.2026.xlsx") and nome == "PROCESSAR_MERCADO CENTER 22.09.2026.xlsx"
+    ab, nome = caminhos("CO05", "18.09.2026")
+    assert ab.endswith(r"COLETAS CO05\2026\09.2026\MERCADO COLETAS CO05 18.09.2026.xlsx") and nome == "PROCESSAR_MERCADO COLETAS CO05 18.09.xlsx"
     print("rodar_canal.py: ok")
 
 
