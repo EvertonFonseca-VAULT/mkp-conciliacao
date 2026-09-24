@@ -96,6 +96,22 @@ CANAIS = {
         # "ESTORNO"/"DESPESAS" de outros lancamentos.
         "chave_rbx": ("MKP_MELI_ES", "MKP_MELI_CO_", "MKP_MELI_CO REF PARC"),
     },
+    # PRIME: raiz, rotulos do RB/RBX (MKP_MELI_PRIME_REPASSE/_COMISSAO/_FRETE),
+    # HISTORICO do CMM (MKP_MELI_PRIME_...) e chave de cupom passados pelo
+    # Everton, 24/09/2026. Vendedor e loja do calendario = rodar_canal/koncili.
+    "PRIME": {
+        "raiz": "MKP_MELI_PRIME",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\PRIME",
+        "prefixo": "PROCESSAR_MERCADO PRIME",
+        "chave_rbx": "MKP_MELI_PRIME",  # nao colide com MKP_B2W_PRIME (outro marketplace)
+        "loja_calendario": "PRIME",
+        # loja_cmm e vendedor confirmados com linha CMM real (24/09/2026):
+        # MKP/MELI/PRIME, TARIFA DE COBRANCA, vendedor 657, X103925.
+        "loja_cmm": "PRIME",
+        "chave_cupom_rebate": "MKP CUPOM MELI PRIME REPASSE",
+        "vendedor": "657",
+        "prefixo_mov": "MKP_MELI_PRIME",
+    },
 }
 
 # MOVEIS/ELETRO removidos daqui (18/09/2026, pedido do Everton): por
