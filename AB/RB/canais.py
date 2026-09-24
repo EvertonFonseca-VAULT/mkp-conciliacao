@@ -103,7 +103,10 @@ CANAIS = {
         "raiz": "MKP_MELI_PRIME",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\PRIME",
         "prefixo": "PROCESSAR_MERCADO PRIME",
-        "chave_rbx": "MKP_MELI_PRIME",  # nao colide com MKP_B2W_PRIME (outro marketplace)
+        # 2 raizes, igual ao ES: agregado/manual "MKP_MELI_PRIME_..." e pedido a
+        # pedido "REC MKP WEBCO PRIME REF PARC N" (sem MELI) -- confirmado no
+        # rbx.xlsx real, 24/09/2026 (tudo vendedor 657; nao colide com MKP_B2W_PRIME).
+        "chave_rbx": ("MKP_MELI_PRIME", "WEBCO PRIME REF PARC"),
         "loja_calendario": "PRIME",
         # loja_cmm e vendedor confirmados com linha CMM real (24/09/2026):
         # MKP/MELI/PRIME, TARIFA DE COBRANCA, vendedor 657, X103925.
