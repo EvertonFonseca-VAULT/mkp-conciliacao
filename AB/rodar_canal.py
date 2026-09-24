@@ -4,7 +4,7 @@ Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
   FULL    TOTVS/SRI + PTI (750+751)    -> PROCESSAR\\FULL\\PROCESSAR_MERCADO FULL dd.mm.aaaa.xlsx (igual rodar_full.py)
   ES      TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS ES\\PROCESSAR_MERCADO COLETAS ES dd.mm.xlsx
   MOVEIS  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\MOVEIS\\PROCESSAR_MERCADO MOVEIS dd.mm.aaaa.xlsx
-  ELETRO  so TOTVS/SRI (sem PTI/frete) -> ELETRODOMESTICO\\MERCADO ELETRODOMESTICO dd.mm.xlsx
+  ELETRO  so TOTVS/SRI (sem PTI/frete) -> PROCESSAR\\ELETRO\\PROCESSAR_MERCADO ELETRODOMESTICO dd.mm.aaaa.xlsx
   CENTER  TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\CENTER\\PROCESSAR_MERCADO CENTER dd.mm.aaaa.xlsx (vendedor 944)
   CO05    TOTVS/SRI + PTI + frete      -> PROCESSAR\\COLETAS CO05\\PROCESSAR_MERCADO COLETAS CO05 dd.mm.xlsx (vendedor 847,
           mesmo layout de 60 colunas do ES, so em ordem diferente -- processar_es.carregar_ab ja reordena sozinho)
@@ -39,6 +39,7 @@ import pandas as pd
 
 from rodar_es import rodar
 from rodar_full import rodar as rodar_full
+from processar_full import _limpar_id
 
 PASTA_AB = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB"
 RODAR_TOTVS = r"C:\RODAR TOTVS"
@@ -53,7 +54,7 @@ CANAIS_PP = {
     "MOVEIS": dict(ab_pasta="MOVEIS", ab_prefixo="MERCADO MOVEIS", ab_sub="", pti=r"C:\TEMP\PTI MOVEIS.csv", frete=False,
                    saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MOVEIS"), saida_prefixo="PROCESSAR_MERCADO MOVEIS", ano_no_nome=True),
     "ELETRO": dict(ab_pasta="ELETRODOMESTICO", ab_prefixo="MERCADO ELETRODOMESTICO", ab_sub="", pti=None, frete=False,
-                   saida=os.path.join(RODAR_TOTVS, "ELETRODOMESTICO"), saida_prefixo="MERCADO ELETRODOMESTICO", ano_no_nome=False),
+                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "ELETRO"), saida_prefixo="PROCESSAR_MERCADO ELETRODOMESTICO", ano_no_nome=True),
     "CENTER": dict(ab_pasta="CENTER", ab_prefixo="MERCADO CENTER", ab_sub="", pti=r"C:\TEMP\PTI CENTER.csv", frete=False,
                    saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "CENTER"), saida_prefixo="PROCESSAR_MERCADO CENTER", ano_no_nome=True),
     "CO05": dict(ab_pasta="COLETAS CO05", ab_prefixo="MERCADO COLETAS CO05", ab_sub="", pti=r"C:\TEMP\PTI COLETAS 05.csv", frete=True,
@@ -87,6 +88,11 @@ def processar(canal, data, pasta_saida=None, forcar=False):
         validacao, _pag, _fr, pp = rodar_full(ab, c["pti"])
     else:
         validacao, _pag, _fr, pp = rodar(ab, c["pti"], frete=c["frete"])
+    # IDs sempre como texto: EXTERNAL_REFERENCE tem 16 digitos e o Excel so guarda
+    # 15 -- gravado como numero, o ultimo digito vira 0 (MOVEIS/ELETRO 11.09.2026).
+    for col in ("SOURCE_ID", "EXTERNAL_REFERENCE"):
+        if col in pp:
+            pp[col] = pp[col].map(_limpar_id)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     with pd.ExcelWriter(destino) as w:
         pp.to_excel(w, sheet_name="Para Processar", index=False)
@@ -119,7 +125,7 @@ def _teste():
     assert ab.endswith(r"COLETAS ES\2026\09.2026\antigo\MERCADO COLETAS ES 18.09.2026.xlsx") and nome == "PROCESSAR_MERCADO COLETAS ES 18.09.xlsx"
     ab, nome = caminhos("FULL", "11.09.2026")
     assert ab.endswith(r"FULL\2026\09.2026\MERCADO FULL 11.09.2026.xlsx") and nome == "PROCESSAR_MERCADO FULL 11.09.2026.xlsx"
-    assert caminhos("ELETRO", "04.09.2026")[1] == "MERCADO ELETRODOMESTICO 04.09.xlsx"
+    assert caminhos("ELETRO", "04.09.2026")[1] == "PROCESSAR_MERCADO ELETRODOMESTICO 04.09.2026.xlsx"
     ab, nome = caminhos("CENTER", "22.09.2026")
     assert ab.endswith(r"CENTER\2026\09.2026\MERCADO CENTER 22.09.2026.xlsx") and nome == "PROCESSAR_MERCADO CENTER 22.09.2026.xlsx"
     ab, nome = caminhos("CO05", "18.09.2026")
