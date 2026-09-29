@@ -26,7 +26,7 @@ Regra de validação em todos os canais: **H:M do Para Processar = RESULTADO do 
 | CENTER | `CONTINENTALCENTER` | 944 | `C:\TEMP\PTI CENTER.csv` | não | `C:\RODAR TOTVS\PROCESSAR\CENTER` |
 | COLETAS CO05 | `LTWE20240219130512` | 847 | `C:\TEMP\PTI COLETAS 05.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\COLETAS CO05` |
 | PRIME | `WEBCOPRIME` | 657 | `C:\TEMP\PTI_PRIME.csv` | não | `C:\RODAR TOTVS\PROCESSAR\PRIME` |
-| WEB | `WEB CONTINENTAL` | — | — | — | só baixa o AB (implantação, sem Para Processar automatizado ainda) |
+| WEB | `WEB CONTINENTAL` | 578 | `C:\TEMP\PTI_WEB.csv` | — | só baixa o AB (implantação, sem Para Processar automatizado ainda) |
 
 Nos códigos de vendedor, o PTI usa `000` na frente (`000755`); CMM/MOV usam sem zeros.
 
