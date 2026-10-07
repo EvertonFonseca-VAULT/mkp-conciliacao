@@ -369,7 +369,11 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         # "mediation"/"refund"/etc na fila sem abrir o AB pra procurar o
         # pedido. Vazio quando o pedido nao tem nenhuma linha no AB do dia
         # (so no RB/RBX). Pedido do Everton, 18/09/2026.
-        cel_descricao = f'<td class="desc">{html.escape(str(row.get("DESCRICAO") or ""))}</td>'
+        # Motivo detalhe (cashback etc, ver enriquecer.py/classificar_ml.py):
+        # descricao completa do Mercado como tooltip -- traz o pedido/venda
+        # relacionado que o Motivo sozinho nao mostra. Pedido do Everton,
+        # 23/09/2026.
+        cel_descricao = _td(html.escape(str(row.get("DESCRICAO") or "")), classe="desc", detalhe=row.get('ML_MOTIVO_DETALHE'))
         cel_marcacao = (
             _cel_marcacao_extra(dif, pedido, CONTA_TRANSITORIA, BANCO_PADRAO, AGENCIA_PADRAO)
             if NATUREZAS_EXTRAS else ""
@@ -1540,6 +1544,15 @@ if __name__ == "__main__":
     # Comissao tambem copia
     assert 'data-copiar="176,97"' in _linhas_tabela(
         pd.DataFrame({"PEDIDO_MKP": ["7"], "DIF": [10.0], "ML_COMISSAO_LIQUIDA": [176.97], "ML_ENVIO": [0.0], "ML_REBATE": [0.0]}))
+
+    # Motivo detalhe (cashback, 23/09/2026): tooltip na celula Descricao.
+    linhas_cashback = _linhas_tabela(pd.DataFrame({
+        "PEDIDO_MKP": ["9"], "DIF": [2872.45], "ML_ENVIO": [0.0], "ML_REBATE": [0.0],
+        "DESCRICAO": ["cashback"],
+        "ML_MOTIVO_DETALHE": ["Reembolsamos R$BRL2.872,45 pelo que aconteceu na devolução de sua venda 2000017769032090"],
+    }))
+    assert 'class="desc tem-detalhe" title="Reembolsamos' in linhas_cashback
+    assert '2000017769032090' in linhas_cashback
 
     # Pedido nao encontrado nem no RB nem no RBX: "n/e" + bolinha ambar.
     linhas_ne = _linhas_tabela(

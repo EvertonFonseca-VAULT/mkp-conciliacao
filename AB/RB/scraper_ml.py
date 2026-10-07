@@ -65,8 +65,15 @@ def resumo_pedido(numero, context):
     aqui com um SHIPPING_ID que nao bate no padrao "comeca com 4", entao a
     escolha ML/MP so pelo prefixo deixava esses sem tentar o ML nunca.
     Quando `numero` ja comeca com "4" nao ha fallback melhor (ja e a
-    tentativa certa)."""
+    tentativa certa).
+
+    "cashback_<numero>" (23/09/2026, pedido do Everton): pedido de
+    cashback do ML/MP, identificado no AB com esse prefixo em vez de um
+    SHIPPING_ID/EXTERNAL_REFERENCE puro -- busca so pelo numero (sem o
+    prefixo), senao a busca no MP/ML nao acha nada."""
     numero = str(numero).strip()
+    if numero.startswith("cashback_"):
+        numero = numero[len("cashback_"):]
 
     if numero.startswith("4"):
         return _buscar_ml(numero, context)

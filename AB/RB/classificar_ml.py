@@ -105,6 +105,17 @@ def _linhas_casadas(linhas_flat, predicado):
     return [(lbl, v) for lbl, v in linhas_flat if predicado(lbl)]
 
 
+def _texto_por_rotulo(linhas, rotulo):
+    """Valor (texto, nao numero) de uma linha crua pelo rotulo exato --
+    "Motivo"/"Motivo detalhe" (ver Screaper.extrair_dados_detalhe_mp),
+    presentes so em atividades sem ticket de compra (cashback etc).
+    Pedido do Everton, 23/09/2026."""
+    for lbl, v in linhas:
+        if lbl and lbl.strip().lower() == rotulo:
+            return v
+    return None
+
+
 def _somar(linhas_casadas):
     """None (nao "achou e deu zero") se a lista estiver vazia -- distingue
     "nao encontrado" de "encontrado, liquido zero" (ex. pedido reembolsado
@@ -201,6 +212,11 @@ def resumir_linhas(linhas, plataforma=None, pedido_ml=None):
         "envio_detalhe": _detalhe(grupo_envio),
         "rebate_detalhe": _detalhe_linhas(linhas_rebate),
         "desconto_bonus_detalhe": _detalhe_linhas(linhas_desconto),
+        # Motivo/Motivo detalhe: so em atividades sem ticket de compra
+        # (cashback etc) -- "detalhe" traz a descricao completa, com o
+        # pedido/venda relacionado embutido. Pedido do Everton, 23/09/2026.
+        "motivo": _texto_por_rotulo(linhas, "motivo"),
+        "motivo_detalhe": _texto_por_rotulo(linhas, "motivo detalhe"),
         # linhas cruas (inclui sublinhas de detalhamento "- ...", que os
         # buckets acima ignoram) -- ver descricoes_ml.py.
         "linhas_raw": linhas,
@@ -292,5 +308,17 @@ if __name__ == "__main__":
     r3 = resumir_linhas(linhas_tarifa_mercado_envios)
     assert r3["custo_envio"] == -44.05, r3["custo_envio"]  # sem o fix, dava -132.15
     assert round(r3["envio"] - r3["custo_envio"], 2) == -88.10  # residuo = Tarifa de devolucao
+
+    # Cashback (pedido real 3299121906, MP, 23/09/2026) -- sem ticket de
+    # compra, so Motivo/Motivo detalhe (ver Screaper.extrair_dados_detalhe_mp).
+    linhas_cashback = [
+        ("Pedido", "3299121906"), ("Status", "approved"),
+        ("Motivo", "Entrada de dinheiro por seu envio"),
+        ("Motivo detalhe", "Reembolsamos R$BRL2.872,45 pelo que aconteceu na devolução de sua venda 2000017769032090"),
+    ]
+    r4 = resumir_linhas(linhas_cashback)
+    assert r4["motivo"] == "Entrada de dinheiro por seu envio"
+    assert "2000017769032090" in r4["motivo_detalhe"]
+    assert r4["comissao"] is None and r4["rebate"] is None  # nao e comissao/rebate, so info
 
     print("classificar_ml.py: ok")

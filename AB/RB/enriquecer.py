@@ -74,6 +74,11 @@ def enriquecer(resultado, raiz, ml_dados=None, rebate_lancado_rbx=None):
     df["ML_ENVIO_DETALHE"] = None
     df["ML_REBATE_DETALHE"] = None
     df["ML_DESCONTO_BONUS_DETALHE"] = None
+    # Motivo/Motivo detalhe: so em atividades sem ticket de compra (cashback
+    # etc, ver classificar_ml.py) -- vira tooltip na Descricao do dashboard.
+    # Pedido do Everton, 23/09/2026.
+    df["ML_MOTIVO"] = None
+    df["ML_MOTIVO_DETALHE"] = None
     df["ACAO_SUGERIDA"] = ""
 
     for i, row in df.iterrows():
@@ -135,6 +140,8 @@ def enriquecer(resultado, raiz, ml_dados=None, rebate_lancado_rbx=None):
         df.at[i, "ML_ENVIO_DETALHE"] = dados.get("envio_detalhe")
         df.at[i, "ML_REBATE_DETALHE"] = rebate_detalhe
         df.at[i, "ML_DESCONTO_BONUS_DETALHE"] = dados.get("desconto_bonus_detalhe")
+        df.at[i, "ML_MOTIVO"] = dados.get("motivo")
+        df.at[i, "ML_MOTIVO_DETALHE"] = dados.get("motivo_detalhe")
 
         if total is None:
             df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + "Achou o pedido mas nao consegui ler o Total -- conferir manualmente no ML/MP."
