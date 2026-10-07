@@ -269,7 +269,7 @@ _VALORES = ["NET_CREDIT_AMOUNT", "NET_DEBIT_AMOUNT", "GROSS_AMOUNT", "MP_FEE_AMO
 _OBRIGATORIAS = ["RELEASE_DATE", "RECORD_TYPE", "DESCRIPTION", "INSTALLMENTS", "PAYMENT_METHOD", "SHIPMENT_MODE"] + _IDS + _VALORES
 
 
-def carregar_ab_center(caminho):
+def carregar_ab_coletas05(caminho):
     """AB do Coletas 05: confere as colunas pelo NOME (o layout do FULL, de 40 colunas exatas, nao vale aqui;
     o relatorio tem 60 colunas, em outra ordem, numa unica aba "Relatorio"). Ids como texto, valores como numero."""
     df = pd.read_excel(caminho, dtype=str)
@@ -362,7 +362,7 @@ def carregar_dias(datas):
         buscar_alvo_loja = lambda loja, dia: None
     dias, erros = [], []
     for d in datas:
-        ab = carregar_ab_center(caminho_destino(CANAL, d))
+        ab = carregar_ab_coletas05(caminho_destino(CANAL, d))
         por_source = carregar_processar(d)
         num, origem, ambiguas = numero_totvs(ab, por_source)
         if ambiguas:

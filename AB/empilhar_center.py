@@ -1,15 +1,15 @@
 """Empilhado do CENTER (Mercado Pago) -- monta as linhas do dia e grava direto no .xlsx do X:.
 
+Mesmas premissas do empilhar_web.py:
 Nao carrega o TOTVS. O "Nº QUE ESTA NO TOTVS" (coluna U) vem do arquivo Para Processar do dia
 (C:\\RODAR TOTVS\\PROCESSAR\\CENTER\\PROCESSAR_MERCADO CENTER DD.MM.AAAA.xlsx), cruzado com o AB por SOURCE_ID.
 Como esse arquivo vem sem duplicados, as linhas do AB cujo SOURCE_ID nao esta nele usam o SHIPPING_ID / ORDER_ID /
 EXTERNAL_REFERENCE da propria linha que exista no conjunto de numeros do Para Processar (se der 0 ou 2, para e avisa).
-O que muda em relacao ao FULL/ES:
   * sem pasta de backup e sem copia local: le o .xlsx do X: e grava um ".novo" na mesma pasta;
     so no fim troca o original (os.replace, sem trafego). Se der erro antes, o original fica intacto.
-  * VALOR (coluna W) e a formula SUM(I:K); SEQUENCIA (X) = X<linha anterior>+1;
-    CHAVE_PRIMARIA (Y) = CONCATENATE(X,"_CENTER_MERCADO").
-  * nao mexe em calendario/tabela a nao ser que existam no arquivo (o exemplo nao tem).
+  * VALOR (W), SEQUENCIA (X) e sufixo da CHAVE_PRIMARIA (Y) sao lidos do proprio arquivo (_convencoes),
+    nao do codigo -- o script segue exatamente o que ja esta gravado no empilhado.
+  * nao mexe em calendario/tabela a nao ser que existam no arquivo.
   * sem cache em pickle: monta, confere e grava na mesma execucao.
 
 Uso (coloque este arquivo na mesma pasta do empilhar.py):
@@ -36,10 +36,13 @@ _AQUI = os.path.dirname(os.path.abspath(__file__))
 # ---- AJUSTAR ----------------------------------------------------------------------------
 PASTA_EMPILHADO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\ARQUIVOS EMPILHADOS DE BAIXAS\ARQUIVOS REPASSES COM CHAVES PRIMÁRIAS"
 ARQUIVO = "CENTER_MERCADO.xlsx"
+CANAL = "CENTER"                  # nome do canal no koncili.CANAIS_KONCILI e no arquivo Para Processar
 # (ou passe o caminho completo na linha de comando: --arquivo="X:\...\arquivo.xlsx")
 ABA = "Base"                      # nome da aba de dados do empilhado (se o arquivo so tiver 1 aba, usa ela)
 PASTA_PROCESSAR = r"C:\RODAR TOTVS\PROCESSAR\CENTER"   # onde ficam os PROCESSAR_MERCADO CENTER DD.MM.AAAA.xlsx
-SUFIXO = "CENTER_MERCADO"         # CHAVE_PRIMARIA = <SEQUENCIA>_CENTER_MERCADO
+SUFIXO = "CENTER_MERCADO"         # o FINAL da CHAVE_PRIMARIA (ex.: "137_CENTER_MERCADO").
+                                   # NAO e o nome do arquivo Para Processar. So serve pra conferencia
+                                   # (a formula de verdade e lida do arquivo do X:, ver _convencoes).
 # -----------------------------------------------------------------------------------------
 
 LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXY"      # as 25 colunas de empilhar.COLUNAS, na ordem
@@ -77,8 +80,9 @@ def _numero(x):
     return str(int(f)) if f.is_integer() else repr(f)
 
 
-def _linha_xml(r, v, est, attrs, sufixo):
-    """XML de uma linha do empilhado + o valor da formula W (I+J+K). `v` = tupla das 25 colunas."""
+def _linha_xml(r, v, est, attrs, conv):
+    """XML de uma linha do empilhado + o valor da formula W. `v` = tupla das 25 colunas.
+    `conv` = convencoes lidas do proprio arquivo (ver _convencoes): colunas somadas, formula, sequencia e sufixo."""
     cel = []
     for i, col in enumerate(LETRAS[:22]):                       # A..V (dados)
         s = ' s="%s"' % est[col] if est[col] else ""
@@ -94,15 +98,15 @@ def _linha_xml(r, v, est, attrs, sufixo):
             if val is None:
                 continue
         cel.append('<c r="%s%d"%s><v>%s</v></c>' % (col, r, s, val))
-    w = float(v[8]) + float(v[9]) + float(v[10])                # I+J+K = GROSS + MP_FEE + FINANCING
-    p = r - 1                                                   # SEQUENCIA = linha - 1
+    w = sum(float(v[LETRAS.index(c)]) for c in conv["cols"])    # ex.: I+J+K (varia por arquivo)
+    seq = r + conv["offset"]                                    # SEQUENCIA = linha + deslocamento lido do arquivo
     sw, sx_, sy = (' s="%s"' % est[c] if est[c] else "" for c in "WXY")
-    cel.append('<c r="W%d"%s><f>SUM(I%d:K%d)</f><v>%s</v></c>' % (r, sw, r, r, repr(w)))
-    if r == 2:                                                  # primeira linha de dados: X1 e o cabecalho
-        cel.append('<c r="X%d"%s><v>1</v></c>' % (r, sx_))
+    cel.append('<c r="W%d"%s><f>%s</f><v>%s</v></c>' % (r, sw, conv["formula"](r), repr(w)))
+    if conv["seq_formula"]:
+        cel.append('<c r="X%d"%s><f>X%d+1</f><v>%d</v></c>' % (r, sx_, r - 1, seq))
     else:
-        cel.append('<c r="X%d"%s><f>X%d+1</f><v>%d</v></c>' % (r, sx_, r - 1, p))
-    cel.append('<c r="Y%d"%s t="str"><f>CONCATENATE(X%d,"_%s")</f><v>%d_%s</v></c>' % (r, sy, r, sufixo, p, sufixo))
+        cel.append('<c r="X%d"%s><v>%d</v></c>' % (r, sx_, seq))
+    cel.append('<c r="Y%d"%s t="str"><f>CONCATENATE(X%d,"_%s")</f><v>%d_%s</v></c>' % (r, sy, r, conv["sufixo"], seq, conv["sufixo"]))
     return '<row r="%d"%s>%s</row>' % (r, attrs, "".join(cel)), w
 
 
@@ -128,6 +132,43 @@ def _dias_gravados(sx):
     return {int(v) for v in re.findall(r'<c r="A\d+"(?: s="\d+")?><v>(\d+)</v>', sx)}
 
 
+def _convencoes(sx, linha, ult):
+    """Le no arquivo real (nao no codigo): (1) a formula de VALOR (coluna W): SUM(I2,J2,K2), SUM(I2:K2) ou SUM(I2+J2+K2);
+    (2) se SEQUENCIA (X) e numero fixo ou formula X+1 e quanto vale em relacao ao numero da linha;
+    (3) o sufixo da CHAVE_PRIMARIA (CONCATENATE(X,"_?")).
+    Devolve dict(cols, formula(r), seq_formula, offset, sufixo)."""
+    modelos = {}
+    for m in re.finditer(r'<c r="W(\d+)"[^>]*><f[^>]*>(SUM\([^<]*\))</f>', sx):
+        modelo = re.sub(r"([A-Z]+)%s\b" % m.group(1), r"\1{r}", m.group(2))
+        modelos[modelo] = modelos.get(modelo, 0) + 1
+    if not modelos:
+        sys.exit('nao achei a formula "SUM(...)" da coluna W no arquivo -- confirme que ha pelo menos 1 linha de dados')
+    modelo = max(modelos, key=modelos.get)
+    if len(modelos) > 1:
+        print("  ATENCAO: o arquivo tem mais de uma formula na coluna W: %s -- usando a mais frequente (%s)" % (modelos, modelo))
+    tok = r"[A-Z]+\{r\}(?::[A-Z]+\{r\})?"
+    if not re.fullmatch(r"SUM\(%s(?:[,+]%s)*\)" % (tok, tok), modelo):
+        sys.exit("formula de VALOR (coluna W) nao suportada: %s" % modelo)
+    cols = []
+    for t in re.split(r"[,+]", modelo[4:-1]):
+        ab = [x.replace("{r}", "") for x in t.split(":")]
+        cols += ab if len(ab) == 1 else LETRAS[LETRAS.index(ab[0]):LETRAS.index(ab[1]) + 1]
+    formula = lambda r: modelo.replace("{r}", str(r))
+
+    m = re.search(r'<c r="X%d"[^>]*>(<f[^>]*/>|<f[^>]*>[^<]*</f>)?<v>(-?\d+)</v>' % ult, linha)
+    if not m:
+        sys.exit("nao achei a SEQUENCIA (coluna X) numerica na ultima linha de dados (linha %d)" % ult)
+    seq_formula, offset = m.group(1) is not None, int(m.group(2)) - ult
+
+    m = re.search(r'CONCATENATE\(X\d+,"_([^"]+)"\)', sx)
+    if not m:
+        sys.exit('nao achei a formula CONCATENATE da coluna Y (CHAVE_PRIMARIA) no arquivo')
+    sufixo = m.group(1)
+    print('  (convencoes do arquivo: VALOR = %s  |  SEQUENCIA = %s  |  CHAVE = <SEQUENCIA>_%s)' % (
+        modelo.replace("{r}", ""), "formula X+1" if seq_formula else "numero fixo" + (" (linha %+d)" % offset if offset else " = linha"), sufixo))
+    return dict(cols=cols, formula=formula, seq_formula=seq_formula, offset=offset, sufixo=sufixo)
+
+
 def _ultima_linha(sx, fim):
     """(numero, inicio, fim) da ultima linha com dado na coluna A; se so tiver cabecalho, devolve a linha 1."""
     ini = max(0, fim - 300000)
@@ -138,12 +179,18 @@ def _ultima_linha(sx, fim):
     raise ValueError("nao achei a ultima linha de dados")
 
 
-def inserir(sx, dias, sufixo=SUFIXO):
-    """Devolve (sx novo, info). `dias` = lista de DataFrames no formato de empilhar.montar_linhas."""
+def inserir(sx, dias, sufixo_esperado=None):
+    """Devolve (sx novo, info). `dias` = lista de DataFrames no formato de empilhar.montar_linhas.
+    A formula de VALOR e o sufixo da CHAVE sao lidos do proprio arquivo (_convencoes), nao do codigo.
+    Se `sufixo_esperado` for passado e nao bater com o do arquivo, para (protege contra apontar
+    sem querer para o empilhado de outro canal)."""
     fim = sx.rindex("</sheetData>")
     ult, ini_ult, fim_ult = _ultima_linha(sx, fim)
     assert not re.search(r"<v>|<f", sx[fim_ult:fim]), "ha dados depois da ultima linha detectada -- conferir a mao"
     linha = sx[ini_ult:fim_ult]
+    conv = _convencoes(sx, linha, ult)
+    if sufixo_esperado and conv["sufixo"] != sufixo_esperado:
+        sys.exit('o arquivo usa sufixo "_%s" na chave, mas o script esperava "_%s" (SUFIXO no topo do script) -- arquivo errado?' % (conv["sufixo"], sufixo_esperado))
     attrs = re.search(r'<row r="\d+"([^>]*)>', linha).group(1)
     est = {c: None for c in LETRAS}
     if ult > 1:                                                  # estilos copiados da ultima linha de dados
@@ -155,14 +202,14 @@ def inserir(sx, dias, sufixo=SUFIXO):
         soma = 0.0
         for v in df[COLUNAS].itertuples(index=False):
             r += 1
-            x, w = _linha_xml(r, v, est, attrs, sufixo)
+            x, w = _linha_xml(r, v, est, attrs, conv)
             novas.append(x)
             soma += w
         somas.append(soma)
     sx2 = sx[:fim_ult] + "".join(novas) + sx[fim:]
     sx2 = re.sub(r'<dimension ref="A1:([A-Z]+)\d+"/>', lambda m: '<dimension ref="A1:%s%d"/>' % (m.group(1), r), sx2, count=1)
     sx2 = re.sub(r'<autoFilter ref="A1:([A-Z]+)\d+"', lambda m: '<autoFilter ref="A1:%s%d"' % (m.group(1), r), sx2, count=1)
-    return sx2, dict(ult=ult, primeira_nova=ult + 1, nova_ult=r, somas=somas, novas="".join(novas), linhas=r - ult)
+    return sx2, dict(ult=ult, primeira_nova=ult + 1, nova_ult=r, somas=somas, novas="".join(novas), linhas=r - ult, sufixo=conv["sufixo"], offset=conv["offset"])
 
 
 def conferir_xml(sx2, info):
@@ -171,9 +218,9 @@ def conferir_xml(sx2, info):
     nums = [int(n) for n in re.findall(r'<row r="(\d+)"', sx2)]
     assert nums == sorted(set(nums)) and nums[-1] == info["nova_ult"], "linhas duplicadas/fora de ordem"
     xs = re.findall(r'<c r="X(\d+)"[^>]*>(?:<f>[^<]*</f>)?<v>(\d+)</v>', info["novas"])
-    assert len(xs) == info["linhas"] and all(int(v) == int(r) - 1 for r, v in xs), "SEQUENCIA das linhas novas errada"
+    assert len(xs) == info["linhas"] and all(int(v) == int(r) + info["offset"] for r, v in xs), "SEQUENCIA das linhas novas errada"
     ys = re.findall(r'<c r="Y(\d+)"[^>]*><f>[^<]*</f><v>([^<]*)</v>', info["novas"])
-    assert len(ys) == info["linhas"] and all(v == "%d_%s" % (int(r) - 1, SUFIXO) for r, v in ys), "CHAVE das linhas novas errada"
+    assert len(ys) == info["linhas"] and all(v == "%d_%s" % (int(r) + info["offset"], info["sufixo"]) for r, v in ys), "CHAVE das linhas novas errada"
 
 
 # ---------------------------------------------------------------- gravacao
@@ -233,12 +280,12 @@ def carregar_ab_center(caminho):
 
 
 def carregar_processar(data):
-    """Arquivo "Para Processar" do dia (PROCESSAR_MERCADO_CENTER_DD_MM_AAAA.xlsx): SOURCE_ID -> numero do TOTVS
+    """Arquivo "Para Processar" do dia (PROCESSAR_MERCADO CENTER DD.MM.AAAA.xlsx): SOURCE_ID -> numero do TOTVS
     (a EXTERNAL_REFERENCE do arquivo). Ele vem sem duplicados, entao nem todo SOURCE_ID do AB esta nele."""
     d, m, a = data.split(".")
     achados = []
     for sep in (".", "_", "-"):                                  # PROCESSAR_MERCADO CENTER 11.09.2026.xlsx (ou 11_09_2026)
-        achados += glob.glob(os.path.join(PASTA_PROCESSAR, "PROCESSAR*CENTER*%s%s%s%s%s*.xlsx" % (d, sep, m, sep, a)))
+        achados += glob.glob(os.path.join(PASTA_PROCESSAR, "PROCESSAR*%s*%s%s%s%s%s*.xlsx" % (CANAL, d, sep, m, sep, a)))
     achados = sorted({x for x in achados if not os.path.basename(x).startswith("~$")})
     if len(achados) != 1:
         sys.exit("esperava 1 arquivo Para Processar do dia %s em %s, achei %d" % (data, PASTA_PROCESSAR, len(achados)))
@@ -301,15 +348,15 @@ def carregar_dias(datas):
     sys.path.insert(0, _AQUI)
     from koncili import CANAIS_KONCILI, caminho_destino
 
-    if "CENTER" not in CANAIS_KONCILI:
-        sys.exit("registre o canal CENTER em koncili.CANAIS_KONCILI (loja + caminho do AB) antes de rodar")
+    if CANAL not in CANAIS_KONCILI:
+        sys.exit("registre o canal %s em koncili.CANAIS_KONCILI (loja + caminho do AB) antes de rodar" % CANAL)
     try:
         from calendario_alvo import buscar_alvo_loja
     except ImportError:
         buscar_alvo_loja = lambda loja, dia: None
     dias, erros = [], []
     for d in datas:
-        ab = carregar_ab_center(caminho_destino("CENTER", d))
+        ab = carregar_ab_center(caminho_destino(CANAL, d))
         por_source = carregar_processar(d)
         num, origem, ambiguas = numero_totvs(ab, por_source)
         if ambiguas:
@@ -318,14 +365,14 @@ def carregar_dias(datas):
             print(ab.loc[[i for i, _ in ambiguas[:15]], cols].to_string())
             print("   candidatos achados por linha:", [c for _, c in ambiguas[:15]])
             erros.append(d)
-            print("  CENTER %s: %d linha(s) com mais de um candidato (SHIPPING_ID e ORDER_ID ambos no Para Processar, com numeros diferentes)" % (d, len(ambiguas)))
+            print("  " + CANAL + " %s: %d linha(s) com mais de um candidato (SHIPPING_ID e ORDER_ID ambos no Para Processar, com numeros diferentes)" % (d, len(ambiguas)))
             continue
         df = montar_linhas(ab, d, num)
-        alvo = buscar_alvo_loja(CANAIS_KONCILI["CENTER"]["loja"], d.replace(".", "/"))
+        alvo = buscar_alvo_loja(CANAIS_KONCILI[CANAL]["loja"], d.replace(".", "/"))
         soma = round(df["VALOR"].sum(), 2)
         ok = alvo is None or abs(soma - alvo) < 0.01
         vazias = (origem == "vazio").sum()
-        print("  CENTER %s: AB %d linhas | Para Processar %d | numero: %d pelo PP + %d pelos candidatos + %d vazio | soma VALOR %s | calendario %s | %s" % (
+        print("  " + CANAL + " %s: AB %d linhas | Para Processar %d | numero: %d pelo PP + %d pelos candidatos + %d vazio | soma VALOR %s | calendario %s | %s" % (
             d, len(ab), len(por_source), (origem == "PP").sum(), (origem == "cand").sum(), vazias, format(soma, ",.2f"),
             "-" if alvo is None else format(alvo, ",.2f"), "sem linha no calendario" if alvo is None else ("OK" if ok else "DIFERE")), flush=True)
         if vazias:
@@ -367,10 +414,10 @@ def main(argv):
         return
 
     dias = carregar_dias(novos)
-    sx2, info = inserir(sx, dias)
+    sx2, info = inserir(sx, dias, sufixo_esperado=SUFIXO)
     conferir_xml(sx2, info)
     for d, df, w in zip(novos, dias, info["somas"]):
-        aviso = "" if abs(w - df["VALOR"].sum()) < 0.01 else "  <-- ATENCAO: SUM(I:K) difere do VALOR (credito - debito)"
+        aviso = "" if abs(w - df["VALOR"].sum()) < 0.01 else "  <-- ATENCAO: a formula da coluna W difere do VALOR (credito - debito)"
         print("  %s: soma da coluna W %s%s" % (d, format(w, ",.2f"), aviso))
     print("linhas novas: %d (%d a %d)" % (info["linhas"], info["primeira_nova"], info["nova_ult"]))
     if not publicar:
@@ -402,10 +449,11 @@ def _teste():
               "DESCRIÇÃO 2": "payment", "GROSS_AMOUNT": 100.0, "MP_FEE_AMOUNT": -10.0, "FINANCING_FEE_AMOUNT": -5.5, "PACK_ID": None, "VALOR": 84.5,
               "Nº QUE ESTÁ NO TOTVS": "47", "OPERAÇÃO": "release_payment", "SEQUENCIA": None, "CHAVE_PRIMÁRIA": None})
     df = pd.DataFrame([v, v])[COLUNAS]
-    sx2, info = inserir(sx, [df])
+    sx2, info = inserir(sx, [df], sufixo_esperado="CENTER_MERCADO")
     conferir_xml(sx2, info)
-    assert info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
-    assert '<dimension ref="A1:Y4"/>' in sx2 and "<f>X3+1</f><v>3</v>" in sx2 and "<v>3_CENTER_MERCADO</v>" in sx2
+    # offset=-1: X2=1, linha=2 -> offset=1-2=-1; linha 3 seq=2, linha 4 seq=3
+    assert info["sufixo"] == "CENTER_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
+    assert '<dimension ref="A1:Y4"/>' in sx2 and '<c r="X3" s="3"><v>2</v></c>' in sx2 and "<v>3_CENTER_MERCADO</v>" in sx2
     assert '<c r="C3" s="1"' not in sx2 and 't="inlineStr"><is><t xml:space="preserve">123</t>' in sx2 and 'r="T3"' not in sx2
     assert _dias_gravados(sx2) == {46275, 46276}
     print("empilhar_center.py: ok")

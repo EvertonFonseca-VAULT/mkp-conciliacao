@@ -1,14 +1,14 @@
 """Empilhado do WEB (Mercado Pago) -- monta as linhas do dia e grava direto no .xlsx do X:.
 
 Nao carrega o TOTVS. O "Nº QUE ESTA NO TOTVS" (coluna U) vem do arquivo Para Processar do dia
-(C:\\RODAR TOTVS\\PROCESSAR\\CENTER\\PROCESSAR_MERCADO CENTER DD.MM.AAAA.xlsx), cruzado com o AB por SOURCE_ID.
+(C:\\RODAR TOTVS\\PROCESSAR\\WEB\\PROCESSAR_MERCADO WEB DD.MM.AAAA.xlsx), cruzado com o AB por SOURCE_ID.
 Como esse arquivo vem sem duplicados, as linhas do AB cujo SOURCE_ID nao esta nele usam o SHIPPING_ID / ORDER_ID /
 EXTERNAL_REFERENCE da propria linha que exista no conjunto de numeros do Para Processar (se der 0 ou 2, para e avisa).
 O que muda em relacao ao FULL/ES:
   * sem pasta de backup e sem copia local: le o .xlsx do X: e grava um ".novo" na mesma pasta;
     so no fim troca o original (os.replace, sem trafego). Se der erro antes, o original fica intacto.
   * VALOR (coluna W) e a formula SUM(I:K); SEQUENCIA (X) = X<linha anterior>+1;
-    CHAVE_PRIMARIA (Y) = CONCATENATE(X,"_CENTER_MERCADO").
+    CHAVE_PRIMARIA (Y) = CONCATENATE(X,"_WEB_MERCADO").
   * nao mexe em calendario/tabela a nao ser que existam no arquivo (o exemplo nao tem).
   * sem cache em pickle: monta, confere e grava na mesma execucao.
 
@@ -421,7 +421,7 @@ def main(argv):
 def _teste():
     """Offline: acrescenta 1 dia sintetico numa Base minima e confere linhas, formulas e dimensao."""
     linha2 = ('<row r="2" spans="1:25"><c r="A2" s="1"><v>46275</v></c><c r="C2" t="inlineStr"><is><t>1</t></is></c><c r="G2" s="2"><v>10</v></c>'
-              '<c r="W2" s="2"><f>SUM(I2:K2)</f><v>10</v></c><c r="X2" s="3"><v>1</v></c><c r="Y2" s="3" t="str"><f>CONCATENATE(X2,"_CENTER_MERCADO")</f><v>1_CENTER_MERCADO</v></c></row>')
+              '<c r="W2" s="2"><f>SUM(I2:K2)</f><v>10</v></c><c r="X2" s="3"><v>1</v></c><c r="Y2" s="3" t="str"><f>CONCATENATE(X2,"_WEB_MERCADO")</f><v>1_WEB_MERCADO</v></c></row>')
     sx = ('<worksheet><dimension ref="A1:Y2"/><sheetData><row r="1" spans="1:25"><c r="A1" t="s"><v>0</v></c></row>'
           + linha2 + '</sheetData></worksheet>')
     v = dict.fromkeys(COLUNAS, 0.0)
@@ -431,8 +431,8 @@ def _teste():
     df = pd.DataFrame([v, v])[COLUNAS]
     sx2, info = inserir(sx, [df])
     conferir_xml(sx2, info)
-    assert info["sufixo"] == "CENTER_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
-    assert '<dimension ref="A1:Y4"/>' in sx2 and "<f>X3+1</f><v>3</v>" in sx2 and "<v>3_CENTER_MERCADO</v>" in sx2
+    assert info["sufixo"] == "WEB_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
+    assert '<dimension ref="A1:Y4"/>' in sx2 and "<f>X3+1</f><v>3</v>" in sx2 and "<v>3_WEB_MERCADO</v>" in sx2
     assert '<c r="C3" s="1"' not in sx2 and 't="inlineStr"><is><t xml:space="preserve">123</t>' in sx2 and 'r="T3"' not in sx2
     assert _dias_gravados(sx2) == {46275, 46276}
     print("empilhar_web.py: ok")
