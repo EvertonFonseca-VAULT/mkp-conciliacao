@@ -3,3 +3,4 @@ numpy
 openpyxl
 requests
 playwright
+beautifulsoup4  # fallback SRI (processar_full.resolver_pendentes_via_sri importa Pagina.py do Screaper Mercado no mesmo processo)
