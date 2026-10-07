@@ -10,6 +10,7 @@ Mesmo processo do rodar_es.py -- muda so o que cada canal usa:
           mesmo layout de 60 colunas do ES, so em ordem diferente -- processar_es.carregar_ab ja reordena sozinho)
   PRIME   TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\PRIME\\PROCESSAR_MERCADO PRIME dd.mm.aaaa.xlsx (vendedor 657,
           adicionado 23/09/2026 -- frete=False confirmado contra o calendario, ver validacao abaixo)
+  WEB     TOTVS/SRI + PTI, SEM frete   -> PROCESSAR\\WEB\\PROCESSAR_MERCADO WEB dd.mm.aaaa.xlsx (vendedor 578)
 
 Validado em 19-20/09/2026: MOVEIS 04.09 e ELETRO 04.09 contra os arquivos manuais,
 ES 01-10.09 (ver rodar_es.py) e H:M de todos os dias contra o calendario/Koncili.
@@ -64,6 +65,10 @@ CANAIS_PP = {
     # = calendario nos 5 dias testados (11, 14, 16, 17 e 18.09.2026).
     "PRIME": dict(ab_pasta="PRIME", ab_prefixo="MERCADO PRIME", ab_sub="", pti=r"C:\TEMP\PTI_PRIME.csv", frete=False,
                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "PRIME"), saida_prefixo="PROCESSAR_MERCADO PRIME", ano_no_nome=True),
+    # WEB (vendedor 578): sem frete, igual aos manuais em AB/WEB -- 09.09 bate linha a
+    # linha; o manual "10.09" e na verdade o AB de 08.09 (bate o H:M 173.588,58). 24/09/2026.
+    "WEB": dict(ab_pasta="WEB", ab_prefixo="MERCADO WEB", ab_sub="", pti=r"C:\TEMP\PTI WEB.csv", frete=False,
+                saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "WEB"), saida_prefixo="PROCESSAR_MERCADO WEB", ano_no_nome=True),
 }
 
 
