@@ -27,7 +27,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "RB"))
 
 import pandas as pd
-
+from datetime import datetime
 from calendario_alvo import buscar_alvo_loja
 
 URL = "https://components.koncili.com"
@@ -67,8 +67,17 @@ CANAIS_KONCILI = {
     # se pensava antes. Sem "aba"/"colunas" (igual ES): salva a "Sheet0" do
     # jeito que o Koncili exporta, sem reajuste -- processar_es.carregar_ab
     # ja reordena as 60 colunas sozinho. "salvar" removido (era False).
-    "CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05"},
+    "COLETAS_CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05"},
 }
+
+
+def _para_iso(data):
+    """DD.MM.AAAA -> AAAA-MM-DD (valida a data)."""
+    return datetime.strptime(data, "%d.%m.%Y").strftime("%Y-%m-%d")
+
+def _de_iso(iso):
+    a, m, d = iso.split("-")
+    return f"{d}.{m}.{a}"
 
 
 def ler_credenciais():
@@ -117,6 +126,25 @@ def achar_repasse(req, hdr, conta, data_iso, max_paginas=10):
             break
     return None
 
+
+def listar_repasses(req, hdr, conta, ini_iso, fim_iso, max_paginas=30):
+    """Repasses da `conta` cujo periodo comeca entre ini_iso e fim_iso
+    (AAAA-MM-DD, inclusive). Um por dia: o mais recente, se houve reprocesso."""
+    achados = {}
+    for pg in range(1, max_paginas + 1):
+        corpo = {"analyzed": None, "status": None, "channelName": ["MERCADOLIVRE"], "page": pg, "pageSize": 100,
+                 "orderByField": "PROCESS_CREATED_DATE", "orderByDir": "desc"}
+        d = req.post(f"{API}/reconciliation/api/view/conciliation/search", data=json.dumps(corpo), headers=hdr).json()
+        for i in d["values"]:
+            dia = i["initDate"][:10]
+            if i["accountName"] == conta and ini_iso <= dia <= fim_iso:
+                achados.setdefault(dia, i)  # lista vem da mais nova pra mais antiga
+        if pg * 100 >= d["count"]:
+            break
+        # pagina inteira ja anterior ao inicio: os proximos so ficam mais velhos
+        if d["values"] and all(i["initDate"][:10] < ini_iso for i in d["values"]):
+            break
+    return [achados[k] for k in sorted(achados)]
 
 def resultado(req, hdr, id_repasse):
     r = req.get(f"{API}/reconciliation/api/reconciliation/view/{id_repasse}/summary", headers=hdr).json()
@@ -168,10 +196,11 @@ def _ajustar_layout(caminho, c):
     wb.save(caminho)
 
 
-def conferir(page, req, hdr, canal, data, salvar=False):
+def conferir(page, req, hdr, canal, data, salvar=False, rep=None):
     c = CANAIS_KONCILI[canal]
     dia, mes, ano = data.split(".")
-    rep = achar_repasse(req, hdr, c["conta"], f"{ano}-{mes}-{dia}")
+    if rep is None:
+        rep = achar_repasse(req, hdr, c["conta"], f"{ano}-{mes}-{dia}")
     if rep is None:
         print(f"  {canal} {data}: sem repasse no Koncili (conta {c['conta']})")
         return None
@@ -204,10 +233,20 @@ def conferir(page, req, hdr, canal, data, salvar=False):
 
 def main(argv):
     salvar = "--salvar" in argv
+    intervalo = "--intervalo" in argv
     args = [a for a in argv if not a.startswith("--")]
-    if len(args) < 2 or args[0].upper() not in CANAIS_KONCILI:
-        sys.exit(f"uso: python koncili.py <{'|'.join(CANAIS_KONCILI)}> DD.MM.AAAA [DD.MM.AAAA ...] [--salvar]")
-    canal, datas = args[0].upper(), args[1:]
+    ok_args = len(args) == 3 if intervalo else len(args) >= 2
+    if not ok_args or args[0].upper() not in CANAIS_KONCILI:
+        sys.exit(f"uso: python koncili.py <{'|'.join(CANAIS_KONCILI)}> DD.MM.AAAA [DD.MM.AAAA ...] [--salvar]\n"
+                 f"     python koncili.py <canal> DATA_INICIO DATA_FIM --intervalo [--salvar]")
+    canal = args[0].upper()
+    if intervalo:
+        try:
+            ini_iso, fim_iso = _para_iso(args[1]), _para_iso(args[2])
+        except ValueError:
+            sys.exit("ERRO: datas devem estar no formato DD.MM.AAAA")
+        if ini_iso > fim_iso:
+            sys.exit("ERRO: data inicial maior que a final")
     usuario, senha = ler_credenciais()
 
     from playwright.sync_api import sync_playwright
@@ -218,10 +257,16 @@ def main(argv):
         try:
             login(page, usuario, senha)
             hdr = cabecalhos_api(page)
-            for i, data in enumerate(datas, 1):
-                print(f"[{i}/{len(datas)}] {canal} {data}", flush=True)
+            if intervalo:
+                reps = listar_repasses(page.context.request, hdr, CANAIS_KONCILI[canal]["conta"], ini_iso, fim_iso)
+                print(f"{canal}: {len(reps)} repasse(s) entre {args[1]} e {args[2]}", flush=True)
+                trabalho = [(_de_iso(r["initDate"][:10]), r) for r in reps]
+            else:
+                trabalho = [(d, None) for d in args[1:]]
+            for i, (data, rep) in enumerate(trabalho, 1):
+                print(f"[{i}/{len(trabalho)}] {canal} {data}", flush=True)
                 try:
-                    conferir(page, page.context.request, hdr, canal, data, salvar)
+                    conferir(page, page.context.request, hdr, canal, data, salvar, rep)
                 except Exception as exc:  # um dia com erro nao derruba os outros
                     print(f"  ERRO {canal} {data}: {str(exc)[:150]}", flush=True)
         finally:

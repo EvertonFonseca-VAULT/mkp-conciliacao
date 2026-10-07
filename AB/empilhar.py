@@ -15,16 +15,19 @@ Uso (o dia a dia):
     python empilhar.py FULL 22.09.2026                       # monta, confere e grava LOCAL (nada muda no X:)
     python empilhar.py FULL 22.09.2026 23.09.2026 --publicar # idem e troca o empilhado do X: (com backup)
     python empilhar.py ES 22.09.2026 --publicar
+    python empilhar.py FULL --intervalo 22.09.2026 30.09.2026 --publicar  # todo o intervalo (inclusive)
 Antes: o AB do dia no X: (python koncili.py FULL 22.09.2026 --salvar). Rodar de novo com um
 dia que ja esta no empilhado nao duplica nada.
 
-Partes: `python empilhar.py ensaio FULL 11.09.2026 ...` (so monta e confere) e `python empilhar.py --teste`.
+Partes: `python empilhar.py ensaio FULL 11.09.2026 ...` (so monta e confere), `python empilhar.py ensaio FULL --intervalo 11.09.2026 20.09.2026`
+e `python empilhar.py --teste`.
 """
 
 import os
 import pickle
 import sys
 import time
+from datetime import datetime, timedelta
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 for sub in ("FULL", "ES", "MOVEIS", "RB"):
@@ -123,10 +126,31 @@ def _teste():
     df = montar_linhas(cruz, "01.09.2026")
     assert df.loc[0, "VALOR"] == -640 and df.loc[0, "ESTORNO"] == 640 and df.loc[0, "OPERAÇÃO"] == "release_refund"
     assert df.loc[0, "Nº QUE ESTÁ NO TOTVS"] == "47" and str(df.loc[0, "DATA_REPASSE"])[:10] == "2026-09-01"
+    assert intervalo_datas("28.09.2026", "01.10.2026") == ["28.09.2026", "29.09.2026", "30.09.2026", "01.10.2026"]
+    assert _expandir_argv(["FULL", "--intervalo", "28.09.2026", "30.09.2026", "--publicar"]) == \
+        ["FULL", "28.09.2026", "29.09.2026", "30.09.2026", "--publicar"]
     print("empilhar.py: ok")
 
 
+def intervalo_datas(inicio, fim):
+    """Lista de datas 'DD.MM.AAAA', do inicio ao fim, inclusive os dois extremos."""
+    d0 = datetime.strptime(inicio, "%d.%m.%Y")
+    d1 = datetime.strptime(fim, "%d.%m.%Y")
+    passo = 1 if d1 >= d0 else -1
+    return [(d0 + timedelta(days=i * passo)).strftime("%d.%m.%Y") for i in range(abs((d1 - d0).days) + 1)]
+
+
+def _expandir_argv(argv):
+    """Troca '--intervalo INICIO FIM' (se existir) pela lista de datas correspondente."""
+    if "--intervalo" in argv:
+        i = argv.index("--intervalo")
+        inicio, fim = argv[i + 1], argv[i + 2]
+        return argv[:i] + intervalo_datas(inicio, fim) + argv[i + 3:]
+    return argv
+
+
 if __name__ == "__main__":
+    sys.argv[1:] = _expandir_argv(sys.argv[1:])
     if "--teste" in sys.argv:
         _teste()
     elif len(sys.argv) > 3 and sys.argv[1] == "ensaio" and sys.argv[2].upper() in CARREGAR_AB:

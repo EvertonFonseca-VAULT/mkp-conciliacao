@@ -274,6 +274,13 @@ def executar(canal, data, pasta_saida, usar_scraper):
     for status, qtd in r["resultado"]["STATUS"].value_counts().items():
         print(f"  {status}: {qtd}")
     print(f"Dashboard do dia ({canal}): {caminho_html}")
+    # Resumo parseavel pelo .bat (para modo data unica)
+    hm = r["resultado"].loc[:, "H:M"].sum() if "H:M" in r["resultado"].columns else 0
+    verificar_qtd = len(r["fila_verificar"])
+    alvo = r["alvo"]
+    total_rb = r["resultado"]["TOTAL_RB"].sum() if "TOTAL_RB" in r["resultado"].columns else 0
+    bateu_calendario = "SIM" if alvo and abs(total_rb - alvo) < 0.01 else ("NAO" if alvo else "SEM ALVO")
+    print(f"RESUMO|{canal}|{data}|H:M={hm:,.2f}|VERIFICAR={verificar_qtd}|CALENDARIO={bateu_calendario}")
 
     # So abre aba nova na 1a vez do dia -- da 2a em diante a aba que ja
     # esta aberta se recarrega sozinha (visibilitychange, ver dashboard.py)
@@ -287,15 +294,44 @@ def executar(canal, data, pasta_saida, usar_scraper):
         webbrowser.open(caminho_html)
 
 
+def _datas_do_intervalo(data_inicio, data_fim):
+    """Gera lista de datas dd.mm de inicio a fim (inclusive)."""
+    from datetime import datetime, timedelta
+    fmt = "%d.%m"
+    try:
+        inicio = datetime.strptime(data_inicio, fmt)
+        fim = datetime.strptime(data_fim, fmt)
+    except ValueError:
+        fmt = "%d.%m.%Y"
+        inicio = datetime.strptime(data_inicio, fmt)
+        fim = datetime.strptime(data_fim, fmt)
+    datas = []
+    atual = inicio
+    while atual <= fim:
+        datas.append(atual.strftime("%d.%m"))
+        atual += timedelta(days=1)
+    return datas
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--canal")
-    parser.add_argument("--data")
+    # Aceita tanto --canal/--data (flag) quanto canal/data (posicional) --
+    # o .bat usa posicional p/ simplicidade. Ordem: canal data
+    parser.add_argument("canal_pos", nargs="?", help="Canal (posicional, opcional)")
+    parser.add_argument("data_pos", nargs="?", help="Data dd.mm (posicional, opcional)")
+    parser.add_argument("--canal", dest="canal_flag")
+    parser.add_argument("--data", dest="data_flag")
+    parser.add_argument("--data-inicio", dest="data_inicio")
+    parser.add_argument("--data-fim", dest="data_fim")
     parser.add_argument("--saida-pasta", default=PASTA_REDE_PADRAO)
     parser.add_argument("--scraper", action="store_true")
     parser.add_argument("--arquivar-rbx", action="store_true")
     parser.add_argument("--rebate-fora-da-regra")  # caminho do arquivo largado no .bat, nao store_true
     args = parser.parse_args()
+
+    # Precedencia: flag > posicional
+    canal = (args.canal_flag or args.canal_pos)
+    data = (args.data_flag or args.data_pos)
 
     if args.rebate_fora_da_regra:
         # Reinvocado pelo bat de arrastar-e-soltar (ver
@@ -304,7 +340,7 @@ def main():
         from parser_rb import metadata_rb
         from rebate_fora_da_regra import gerar_rebate_fora_da_regra_cmm
 
-        canal = args.canal.upper()
+        canal = (args.canal_flag or args.canal_pos).upper()
         data_ref, responsavel = metadata_rb(CAMINHO_RB_PADRAO)
         raiz = CANAIS[canal]["raiz"]
         df = gerar_rebate_fora_da_regra_cmm(args.rebate_fora_da_regra, raiz, data_ref, responsavel)
@@ -319,16 +355,64 @@ def main():
         # dashboard). Pedido do Everton, 17/09/2026.
         from rodar_conciliacao_rb import _arquivar_rbx
 
-        canal = args.canal.upper()
+        canal = (args.canal_flag or args.canal_pos).upper()
+        data = args.data_flag or args.data_pos
         caminho_rbx = os.path.join(args.saida_pasta, "AUXILIAR", "rbx.xlsx")
-        caminho_destino = _arquivar_rbx(canal, args.data, CANAIS[canal]["raiz"], caminho_rbx)
+        caminho_destino = _arquivar_rbx(canal, data, CANAIS[canal]["raiz"], caminho_rbx)
         print(f"RBX arquivado: {caminho_destino}")
         return
 
-    if args.canal and args.data:
+    # Processamento em intervalo de datas (--data-inicio --data-fim)
+    if canal and args.data_inicio and args.data_fim:
+        datas = _datas_do_intervalo(args.data_inicio, args.data_fim)
+        for data in datas:
+            try:
+                r = processar(canal.upper(), data, args.saida_pasta, args.scraper)
+                # Imprime resumo parseavel pelo .bat
+                hm = r["resultado"].loc[:, "H:M"].sum() if "H:M" in r["resultado"].columns else 0
+                verificar_qtd = len(r["fila_verificar"])
+                alvo = r["alvo"]
+                total_rb = r["resultado"]["TOTAL_RB"].sum() if "TOTAL_RB" in r["resultado"].columns else 0
+                bateu_calendario = "SIM" if alvo and abs(total_rb - alvo) < 0.01 else ("NAO" if alvo else "SEM ALVO")
+                print(f"RESUMO|{canal}|{data}|H:M={hm:,.2f}|VERIFICAR={verificar_qtd}|CALENDARIO={bateu_calendario}")
+                # Gera dashboard (mesma logica de executar mas sem abrir navegador repetidamente)
+                from dashboard import gerar_dashboard
+                from canais import CANAIS_SEM_RAIZ_CONFIRMADA
+                pasta_conciliacoes = os.path.join(args.saida_pasta, "Conciliacoes")
+                raiz_confirmada = r["raiz"] if canal not in CANAIS_SEM_RAIZ_CONFIRMADA else None
+                gerar_dashboard(
+                    r["resultado"], r["fila_verificar"], r["rebate_cmm"],
+                    canal=canal, data=data, data_ref_rb=r["data_ref"],
+                    caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
+                    caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
+                    pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
+                    caminho_bat_scraper=None,
+                    raiz=raiz_confirmada,
+                    caminho_xlsx_descricoes=(
+                        f"../Descricoes/{os.path.basename(r['caminho_descricoes_xlsx'])}"
+                        if r["caminho_descricoes_xlsx"] else None
+                    ),
+                    conferencia_rbx=r["conferencia_rbx"],
+                    valores_pedidos=r["valores_pedidos"],
+                    caminho_bat_atualizar=None,
+                    caminho_bat_arquivar=None,
+                    ml_de_cache=r["ml_de_cache"], responsavel=r["responsavel"],
+                    rebate_processar=r["rebate_processar"],
+                    caminho_xlsx_rebate_processar=(
+                        f"REBATE/{os.path.basename(r['caminho_rebate_processar_xlsx'])}"
+                        if r["caminho_rebate_processar_xlsx"] else None
+                    ),
+                    para_processar=r["para_processar"],
+                    lotes_status=_lotes_status(canal),
+                )
+            except (ValueError, FileNotFoundError, PermissionError) as exc:
+                print(f"ERRO|{canal}|{data}|{exc}")
+        return
+
+    if canal and data:
         # re-execucao interna (com o Python certo pro scraper) -- sem perguntas
         try:
-            executar(args.canal.upper(), args.data, args.saida_pasta, args.scraper)
+            executar(canal.upper(), data, args.saida_pasta, args.scraper)
         except (ValueError, FileNotFoundError, PermissionError) as exc:
             sys.exit(str(exc))
         return
@@ -372,6 +456,7 @@ def _testar_bats():
         pasta_rebate = os.path.join(pasta_saida, "Conciliacoes", "REBATE")
         assert not os.path.exists(pasta_rebate)
         nome_fora_da_regra = gerar_bat_rebate_fora_da_regra("FULL", "01.09", pasta_saida, pasta_rebate)
+        assert "WEB" in CANAIS, "WEB nao cadastrado em CANAIS"
         assert nome_scraper == "rodar_scraper_full_0109.bat", nome_scraper
         assert nome_atualizar == "atualizar_full_0109.bat", nome_atualizar
         assert nome_arquivar == "arquivar_rbx_full_0109.bat", nome_arquivar
