@@ -115,14 +115,86 @@ CANAIS = {
         "vendedor": "657",
         "prefixo_mov": "MKP_MELI_PRIME",
     },
+    "WEB": {
+        "raiz": "MKP_MELI_WE",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\WEB",
+        "prefixo": "PROCESSAR_MERCADO WEB",
+        # Confirmacao em campo: vendedor 578, sem frete, layout/AB iguais aos
+        # manuais do canal WEB. A raiz e a nomenclatura dos historicos do TOTVS
+        # confirmadas no arquivo historicos_totvs.json (MKP_MELI_WE / ..._REPASSE
+        # / ..._COMISSAO / ..._FRETE), entao o dashboard pode montar o painel
+        # corretamente sem esconder a raiz.
+        "chave_rbx": ("MERCADO WEB", "MKP_MELI_WE"),
+        "loja_calendario": "WEB",
+        "loja_cmm": "WEB",
+        "chave_cupom_rebate": "MKP CUPOM MELI WEB REPASSE",
+        "vendedor": "578",
+        "prefixo_mov": "MKP_MELI_WE",
+    },
+    # MOVEIS/ELETRO/CENTER/CO05: configs baseadas em rodar_canal.py --
+    # canais "legados" que o rodar_canal.py ja processa mas o interativo.py
+    # ainda nao suportava. Marcados como "a confirmar" onde nao ha dado real
+    # recente -- Everton, 29/09/2026.
+    "MOVEIS": {
+        "raiz": "MKP_MELI_MO",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MOVEIS",
+        "prefixo": "PROCESSAR_MERCADO MOVEIS",
+        # chave_rbx: a confirmar com dado real do RBX do MOVEIS.
+        # Segue padrao MKP_MELI_MO_* igual FULL/WEB/PRIME.
+        "chave_rbx": ("MKP_MELI_MO",),
+        "loja_calendario": "MOVEIS",
+        "loja_cmm": "MOVEIS",
+        "chave_cupom_rebate": "MKP CUPOM MELI MOVEIS REPASSE",
+        "vendedor": "945",  # a confirmar -- rodar_canal nao cita vendedor do MOVEIS
+        "prefixo_mov": "MKP_MELI_MO",
+    },
+    "ELETRO": {
+        "raiz": "MKP_MELI_ED",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\ELETRO",
+        "prefixo": "PROCESSAR_MERCADO ELETRODOMESTICO",
+        # ELETRO so TOTVS/SRI (sem PTI), sem frete -- ver rodar_canal.py.
+        # chave_rbx: a confirmar com dado real.
+        "chave_rbx": ("MKP_MELI_ED",),
+        "loja_calendario": "ELETRO",
+        "loja_cmm": "ELETRODOMESTICO",
+        "chave_cupom_rebate": "MKP CUPOM MELI ELETRO REPASSE",
+        "vendedor": "946",  # a confirmar
+        "prefixo_mov": "MKP_MELI_ED",
+    },
+    "CENTER": {
+        "raiz": "MKP_MELI_CE",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\CENTER",
+        "prefixo": "PROCESSAR_MERCADO CENTER",
+        # CENTER: TOTVS/SRI + PTI, SEM frete, vendedor 944 (rodar_canal.py).
+        "chave_rbx": ("MKP_MELI_CE","MKP MERCADO CENTER"),
+        "loja_calendario": "CENTER",
+        "loja_cmm": "CENTER",
+        "chave_cupom_rebate": "MKP CUPOM MELI CENTER REPASSE",
+        "vendedor": "944",
+        "prefixo_mov": "MKP_MELI_CE",
+    },
+    "CO05": {
+        "raiz": "MKP_MELI_CO_05",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS CO05",
+        "prefixo": "PROCESSAR_MERCADO COLETAS CO05",
+        # CO05: TOTVS/SRI + PTI + frete, vendedor 847, mesmo layout 60 colunas
+        # do ES (so ordem diferente). chave_rbx: a confirmar -- pode colidir
+        # com ES (MKP_MELI_CO_*), ver comentario do ES sobre "MKP_MELI_CO_".
+        "chave_rbx": ("MKP_MELI_CO_05", "MKP_MELI_CO REF PARC"),
+        "loja_calendario": "COLETAS CO05",
+        "loja_cmm": "CO05",
+        "chave_cupom_rebate": "MKP CUPOM MELI CO05 REPASSE",
+        "vendedor": "847",
+        "prefixo_mov": "MKP_MELI_CO_05",
+    },
 }
 
-# MOVEIS/ELETRO removidos daqui (18/09/2026, pedido do Everton): por
-# enquanto o projeto roda so FULL/ES, nao e pra manter os outros canais
-# meio-configurados (config nunca confirmada com dado real deles). Quando
-# for a hora de replicar pra outro canal, volta no historico do git (commit
-# 142ffb8 em diante) pra recuperar os dicts antigos como ponto de partida.
-CANAIS_SEM_RAIZ_CONFIRMADA = set()
+# MOVEIS/ELETRO/CENTER/CO05/PRIME/WEB: adicionados em 29/09/2026 (ponytail
+# review) -- so FULL e ES tem raiz confirmada com dado real. Os demais
+# estao em "a confirmar" (chute baseado em rodar_canal.py / padrao dos
+# canais confirmados) -- entrarem em CANAIS_SEM_RAIZ_CONFIRMADA pra nao
+# quebrar fluxo de conferencia_rbx/RA ate validacao real.
+CANAIS_SEM_RAIZ_CONFIRMADA = {"CO05"}
 
 
 def validar_data_rb(data_pedida, data_ref_rb):
