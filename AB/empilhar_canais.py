@@ -1,6 +1,7 @@
-"""Empilhado dos canais Mercado Pago (CENTER, COLETAS_CO05, MOVEIS, PRIME, WEB) -- monta as linhas do dia
-e grava direto no .xlsx do X:. Modulo profundo: a implementacao comum fica aqui, cada canal e so o que
-varia de fato (COLUNAS/LETRAS, convencao de formula/sequencia, leitura do AB, leitura do Para Processar).
+"""Empilhado dos canais Mercado Pago (CENTER, COLETAS_CO05, MOVEIS, PRIME, WEB, FULL, ES) -- monta as
+linhas do dia e grava direto no .xlsx do X:. Modulo profundo: a implementacao comum fica aqui, cada canal
+e so o que varia de fato (COLUNAS/LETRAS, convencao de formula/sequencia, leitura do AB, leitura do Para
+Processar).
 
 Mesmas premissas em todos os canais (ver Canal em CONTEXT.md):
 Nao carrega o TOTVS. O numero do TOTVS de cada linha vem do arquivo Para Processar do dia, cruzado com o
@@ -14,7 +15,7 @@ na mesma execucao. Rodar de novo com um dia que ja esta no empilhado nao duplica
 
 Uso (via wrapper fino, um por canal -- ver empilhar_center.py etc.):
     python empilhar_center.py DD.MM.AAAA [...] [--publicar] [--arquivo=CAMINHO]
-    python empilhar_canais.py --teste          # roda os testes offline dos 5 canais
+    python empilhar_canais.py --teste          # roda os testes offline dos 7 canais
 """
 
 import datetime
@@ -478,6 +479,26 @@ def _carregar_processar_glob_wildcard(data, pasta_processar, canal):
     return pp.drop_duplicates("SOURCE_ID").set_index("SOURCE_ID")["EXTERNAL_REFERENCE"]
 
 
+def _carregar_processar_glob_sem_ano(data, pasta_processar, canal):
+    """Como _carregar_processar_glob, mas o nome do arquivo NAO leva o ano (ex.: COLETAS ES -- rodar_canal.py
+    grava "PROCESSAR_MERCADO COLETAS ES DD.MM.xlsx", sem ano, ver CANAIS_PP["ES"]["ano_no_nome"]=False em
+    rodar_canal.py): casa so por DD.MM. Se a pasta tiver 2 anos com o mesmo DD.MM, para e avisa (mesma
+    protecao de sempre) -- na pratica a pasta guarda só o ciclo do ano corrente."""
+    d, m, _a = data.split(".")
+    achados = []
+    for sep in (".", "_", "-"):
+        achados += glob.glob(os.path.join(pasta_processar, "PROCESSAR*%s*%s%s%s*.xlsx" % (canal, d, sep, m)))
+    achados = sorted({x for x in achados if not os.path.basename(x).startswith("~$")})
+    if len(achados) != 1:
+        sys.exit("esperava 1 arquivo Para Processar do dia %s em %s, achei %d" % (data, pasta_processar, len(achados)))
+    pp = pd.read_excel(achados[0], dtype=str)
+    pp.columns = [str(c).strip() for c in pp.columns]
+    for c in ("SOURCE_ID", "EXTERNAL_REFERENCE"):
+        pp[c] = pp[c].str.strip().str.replace(r"\.0$", "", regex=True)
+    pp = pp.dropna(subset=["SOURCE_ID", "EXTERNAL_REFERENCE"])
+    return pp.drop_duplicates("SOURCE_ID").set_index("SOURCE_ID")["EXTERNAL_REFERENCE"]
+
+
 def _norm(t):
     """Sem acento e maiusculo (MÓVEIS == MOVEIS)."""
     return unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().upper()
@@ -578,6 +599,35 @@ def _carregar_ab_moveis(caminho, date_sufixo):
     if df["RELEASE_DATE"].isna().any():
         sys.exit("AB do Moveis: %d linha(s) com DATA DE LIBERAÇÃO que nao consegui ler como data" % df["RELEASE_DATE"].isna().sum())
     return df
+
+
+def _normalizar_ab_sem_dtype_str(df, nome_exibicao):
+    """Para ABs lidos sem dtype=str (FULL/ES, via processar_full/processar_es.carregar_ab -- ja confere
+    o layout exato/aba/traducao deles): ids convertidos pra texto (sem ".0" de float, ver _texto), valores
+    pra numero. Confere so a PRESENCA das colunas que o empilhado usa (igual _carregar_ab_simples)."""
+    df = df.copy()
+    faltam = [c for c in _OBRIGATORIAS_SIMPLES if c not in df.columns]
+    if faltam:
+        raise ValueError("AB do %s sem as colunas %s\nEncontrado: %s" % (nome_exibicao, faltam, list(df.columns)))
+    for c in _IDS:
+        df[c] = df[c].map(_texto)
+    for c in _VALORES_SIMPLES:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+    return df.dropna(subset=["RELEASE_DATE"]).reset_index(drop=True)
+
+
+def _carregar_ab_full(caminho):
+    """AB do FULL: aba 'Relatorio', layout fixo de 40 colunas (ver processar_full.carregar_ab, que ja
+    confere o layout exato -- so normaliza ids/valores aqui, igual os demais canais)."""
+    import processar_full
+    return _normalizar_ab_sem_dtype_str(processar_full.carregar_ab(caminho), "FULL")
+
+
+def _carregar_ab_es(caminho):
+    """AB do COLETAS ES: aba 'Relatorio'/'Sheet0', varias variantes de layout (ver processar_es.carregar_ab,
+    que ja resolve aba/traducao/reordenacao) -- so normaliza ids/valores aqui."""
+    import processar_es
+    return _normalizar_ab_sem_dtype_str(processar_es.carregar_ab(caminho), "ES")
 
 
 _VALORES_PRIME = ["NET_CREDIT_AMOUNT", "NET_DEBIT_AMOUNT", "GROSS_AMOUNT", "SELLER_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT",
@@ -730,6 +780,22 @@ CANAIS = {
         grupo="web", valor_col="VALOR", letra_valor="W", aviso_formula="SUM(I:K) difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Web"),
         carregar_processar=_carregar_processar_glob, montar_linhas=_montar_linhas_padrao,
+    ),
+    "FULL": dict(
+        script_sufixo="full", arquivo="FULL MERCADO_2024.xlsx", aba="Base",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\FULL", sufixo="FULL_MERCADO",
+        letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
+        grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
+        carregar_ab=_carregar_ab_full,
+        carregar_processar=_carregar_processar_glob, montar_linhas=_montar_linhas_padrao,
+    ),
+    "ES": dict(
+        script_sufixo="es", arquivo="COLETAS_ES_MERCADO_2024.xlsx", aba="Base",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES", sufixo="COLETAS_MERCADO",
+        letras=_LETRAS_25, ultima_letra="Z", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
+        grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
+        carregar_ab=_carregar_ab_es,
+        carregar_processar=_carregar_processar_glob_sem_ano, montar_linhas=_montar_linhas_padrao,
     ),
 }
 
@@ -998,9 +1064,47 @@ def _teste_web():
     print("empilhar_canais.py [WEB]: ok")
 
 
+def _teste_full():
+    cfg = CANAIS["FULL"]
+    linha2 = ('<row r="2" spans="1:25"><c r="A2" s="1"><v>46275</v></c><c r="C2" t="inlineStr"><is><t>1</t></is></c><c r="G2" s="2"><v>10</v></c>'
+              '<c r="W2" s="2"><f>SUM(I2:K2)</f><v>10</v></c><c r="X2" s="3"><v>1</v></c><c r="Y2" s="3" t="str"><f>CONCATENATE(X2,"_FULL_MERCADO")</f><v>1_FULL_MERCADO</v></c></row>')
+    sx = ('<worksheet><dimension ref="A1:Y2"/><sheetData><row r="1" spans="1:25"><c r="A1" t="s"><v>0</v></c></row>'
+          + linha2 + '</sheetData></worksheet>')
+    v = dict.fromkeys(cfg["colunas"], 0.0)
+    v.update({"DATA_REPASSE": pd.Timestamp(2026, 9, 11), "DATE": "2026-09-10T10:00:00.000-03:00", "SOURCE_ID": 123.0, "DESCRIÇÃO 1": "release",
+              "DESCRIÇÃO 2": "payment", "GROSS_AMOUNT": 100.0, "MP_FEE_AMOUNT": -10.0, "FINANCING_FEE_AMOUNT": -5.5, "PACK_ID": None, "VALOR": 84.5,
+              "Nº QUE ESTÁ NO TOTVS": "47", "OPERAÇÃO": "release_payment", "SEQUENCIA": None, "CHAVE_PRIMÁRIA": None})
+    df = pd.DataFrame([v, v])[cfg["colunas"]]
+    sx2, info = inserir(sx, [df], cfg, sufixo_esperado="FULL_MERCADO")
+    conferir_xml(sx2, info, cfg)
+    assert info["sufixo"] == "FULL_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
+    assert '<dimension ref="A1:Y4"/>' in sx2 and "<v>3_FULL_MERCADO</v>" in sx2
+    assert _dias_gravados(sx2) == {46275, 46276}
+    print("empilhar_canais.py [FULL]: ok")
+
+
+def _teste_es():
+    cfg = CANAIS["ES"]
+    linha2 = ('<row r="2" spans="1:26"><c r="A2" s="1"><v>46275</v></c><c r="C2" t="inlineStr"><is><t>1</t></is></c><c r="G2" s="2"><v>10</v></c>'
+              '<c r="W2" s="2"><f>SUM(I2:K2)</f><v>10</v></c><c r="X2" s="3"><v>1</v></c><c r="Y2" s="3" t="str"><f>CONCATENATE(X2,"_COLETAS_MERCADO")</f><v>1_COLETAS_MERCADO</v></c></row>')
+    sx = ('<worksheet><dimension ref="A1:Z2"/><sheetData><row r="1" spans="1:26"><c r="A1" t="s"><v>0</v></c></row>'
+          + linha2 + '</sheetData></worksheet>')
+    v = dict.fromkeys(cfg["colunas"], 0.0)
+    v.update({"DATA_REPASSE": pd.Timestamp(2026, 9, 11), "DATE": "2026-09-10T10:00:00.000-03:00", "SOURCE_ID": 123.0, "DESCRIÇÃO 1": "release",
+              "DESCRIÇÃO 2": "payment", "GROSS_AMOUNT": 100.0, "MP_FEE_AMOUNT": -10.0, "FINANCING_FEE_AMOUNT": -5.5, "PACK_ID": None, "VALOR": 84.5,
+              "Nº QUE ESTÁ NO TOTVS": "47", "OPERAÇÃO": "release_payment", "SEQUENCIA": None, "CHAVE_PRIMÁRIA": None})
+    df = pd.DataFrame([v, v])[cfg["colunas"]]
+    sx2, info = inserir(sx, [df], cfg, sufixo_esperado="COLETAS_MERCADO")
+    conferir_xml(sx2, info, cfg)
+    assert info["sufixo"] == "COLETAS_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
+    assert '<dimension ref="A1:Z4"/>' in sx2 and "<v>3_COLETAS_MERCADO</v>" in sx2
+    assert _dias_gravados(sx2) == {46275, 46276}
+    print("empilhar_canais.py [ES]: ok")
+
+
 TESTES = {
     "CENTER": _teste_center, "COLETAS_CO05": _teste_coletas05, "MOVEIS": _teste_moveis,
-    "PRIME": _teste_prime, "WEB": _teste_web,
+    "PRIME": _teste_prime, "WEB": _teste_web, "FULL": _teste_full, "ES": _teste_es,
 }
 
 
