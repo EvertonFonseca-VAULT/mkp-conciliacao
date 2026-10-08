@@ -1,4 +1,4 @@
-"""Empilhado dos canais Mercado Pago (CENTER, COLETAS_CO05, MOVEIS, PRIME, WEB, FULL, ES) -- monta as
+"""Empilhado dos canais Mercado Pago (CENTER, COLETAS_CO05, MOVEIS, PRIME, WEB, FULL, ES, ELETRO) -- monta as
 linhas do dia e grava direto no .xlsx do X:. Modulo profundo: a implementacao comum fica aqui, cada canal
 e so o que varia de fato (COLUNAS/LETRAS, convencao de formula/sequencia, leitura do AB, leitura do Para
 Processar).
@@ -15,7 +15,7 @@ na mesma execucao. Rodar de novo com um dia que ja esta no empilhado nao duplica
 
 Uso (via wrapper fino, um por canal -- ver empilhar_center.py etc.):
     python empilhar_center.py DD.MM.AAAA [...] [--publicar] [--arquivo=CAMINHO]
-    python empilhar_canais.py --teste          # roda os testes offline dos 7 canais
+    python empilhar_canais.py --teste          # roda os testes offline dos 8 canais
 """
 
 import datetime
@@ -570,13 +570,18 @@ _PT_EN_MOVEIS = {
 
 def _data_texto(v, date_sufixo):
     """RELEASE_DATE como texto AAAA-MM-DDTHH:MM:SS<date_sufixo>. O AB do Moveis traz data/hora do Excel
-    (lida como "2026-08-28 11:13:17"); se ja vier como texto ISO com "T" (AB antigo), fica como esta."""
+    (lida como "2026-08-28 11:13:17"); se ja vier como texto ISO com "T" (AB antigo), fica como esta; se a
+    coluna de data nao tiver tipo de data no Excel (ELETRO as vezes traz so o numero, ex. "46262.51..."),
+    converte do serial do Excel (dias desde 1899-12-30)."""
     if not isinstance(v, str) or not v.strip():
         return None
     v = v.strip()
     if re.match(r"\d{4}-\d{2}-\d{2}T", v):
         return v
-    t = pd.to_datetime(v, errors="coerce")
+    if re.match(r"\d+(\.\d+)?$", v):
+        t = pd.to_datetime(float(v), unit="D", origin="1899-12-30")
+    else:
+        t = pd.to_datetime(v, errors="coerce")
     return None if pd.isna(t) else t.strftime("%Y-%m-%dT%H:%M:%S") + date_sufixo
 
 
@@ -797,6 +802,14 @@ CANAIS = {
         carregar_ab=_carregar_ab_es,
         carregar_processar=_carregar_processar_glob_sem_ano, montar_linhas=_montar_linhas_padrao,
     ),
+    "ELETRO": dict(
+        script_sufixo="eletro", arquivo="ELETRODOMESTICO_MERCADO.xlsx", aba="EMPILHADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\ELETRO", sufixo="ELETRODOMÉSTICOS_MERCADO",
+        letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
+        grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
+        carregar_ab=lambda caminho: _carregar_ab_moveis(caminho, ",000-03:00"),
+        carregar_processar=_carregar_processar_normalizado, montar_linhas=_montar_linhas_padrao,
+    ),
 }
 
 
@@ -1016,6 +1029,7 @@ def _teste_moveis():
     # data e nomes do AB
     assert _data_texto("2026-08-28 11:13:17", ",000-03:00") == "2026-08-28T11:13:17,000-03:00"
     assert _data_texto("2023-06-21T17:06:15,000-03:00", ",000-03:00") == "2023-06-21T17:06:15,000-03:00" and _data_texto(None, ",000-03:00") is None
+    assert _data_texto("46262.510092592594", ",000-03:00") == "2026-08-28T12:14:32,000-03:00"
     assert _norm("MÓVEIS mercado") == "MOVEIS MERCADO"
     assert set(_PT_EN_MOVEIS.values()) >= set(_OBRIGATORIAS_SIMPLES)
     print("empilhar_canais.py [MOVEIS]: ok")
@@ -1102,9 +1116,28 @@ def _teste_es():
     print("empilhar_canais.py [ES]: ok")
 
 
+def _teste_eletro():
+    cfg = CANAIS["ELETRO"]
+    linha2 = ('<row r="2" spans="1:25"><c r="A2" s="1"><v>46275</v></c><c r="C2" t="inlineStr"><is><t>1</t></is></c><c r="G2" s="2"><v>10</v></c>'
+              '<c r="W2" s="2"><f>SUM(I2:K2)</f><v>10</v></c><c r="X2" s="3"><v>1</v></c><c r="Y2" s="3" t="str"><f>CONCATENATE(X2,"_ELETRODOMÉSTICOS_MERCADO")</f><v>1_ELETRODOMÉSTICOS_MERCADO</v></c></row>')
+    sx = ('<worksheet><dimension ref="A1:Y2"/><sheetData><row r="1" spans="1:25"><c r="A1" t="s"><v>0</v></c></row>'
+          + linha2 + '</sheetData></worksheet>')
+    v = dict.fromkeys(cfg["colunas"], 0.0)
+    v.update({"DATA_REPASSE": pd.Timestamp(2026, 9, 11), "DATE": "2026-09-10T10:00:00.000-03:00", "SOURCE_ID": 123.0, "DESCRIÇÃO 1": "release",
+              "DESCRIÇÃO 2": "payment", "GROSS_AMOUNT": 100.0, "MP_FEE_AMOUNT": -10.0, "FINANCING_FEE_AMOUNT": -5.5, "PACK_ID": None, "VALOR": 84.5,
+              "Nº QUE ESTÁ NO TOTVS": "47", "OPERAÇÃO": "release_payment", "SEQUENCIA": None, "CHAVE_PRIMÁRIA": None})
+    df = pd.DataFrame([v, v])[cfg["colunas"]]
+    sx2, info = inserir(sx, [df], cfg, sufixo_esperado="ELETRODOMÉSTICOS_MERCADO")
+    conferir_xml(sx2, info, cfg)
+    assert info["sufixo"] == "ELETRODOMÉSTICOS_MERCADO" and info["primeira_nova"] == 3 and info["nova_ult"] == 4 and abs(info["somas"][0] - 169.0) < 1e-9
+    assert '<dimension ref="A1:Y4"/>' in sx2 and "<v>3_ELETRODOMÉSTICOS_MERCADO</v>" in sx2
+    assert _dias_gravados(sx2) == {46275, 46276}
+    print("empilhar_canais.py [ELETRO]: ok")
+
+
 TESTES = {
     "CENTER": _teste_center, "COLETAS_CO05": _teste_coletas05, "MOVEIS": _teste_moveis,
-    "PRIME": _teste_prime, "WEB": _teste_web, "FULL": _teste_full, "ES": _teste_es,
+    "PRIME": _teste_prime, "WEB": _teste_web, "FULL": _teste_full, "ES": _teste_es, "ELETRO": _teste_eletro,
 }
 
 
