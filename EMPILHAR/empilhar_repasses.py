@@ -12,9 +12,10 @@ LIVELO_CENTER, COLOMBO_CENTER) declara: como resolver a data de um arquivo a par
 como extrair as linhas (e o resumo, se tiver), as colunas do empilhado (tabela declarativa) e a
 funcao pura que monta a linha do calendario.
 
-Uso (via wrapper fino, um por chave -- ver empilhar_livelo_center.py etc.):
-    python empilhar_livelo_center.py           # empilha o que faltar (dados e/ou calendario)
-    python empilhar_repasses.py --teste         # roda os testes offline de cada chave
+Uso:
+    python empilhar_repasses.py CHAVE           # empilha o que faltar (dados e/ou calendario)
+    python empilhar_repasses.py CHAVE --teste    # roda o teste offline de 1 chave
+    python empilhar_repasses.py --teste          # roda os testes offline de cada chave
 """
 import datetime
 import pathlib
@@ -467,8 +468,19 @@ def teste(chave):
 
 
 if __name__ == "__main__":
-    if "--teste" in sys.argv:
+    if len(sys.argv) > 1 and sys.argv[1] in REPASSES:
+        _chave, _resto = sys.argv[1], sys.argv[2:]
+        if "--teste" in _resto:
+            teste(_chave)
+        else:
+            main(_chave, _resto)
+    elif "--teste" in sys.argv:
         for _chave in TESTES:
             teste(_chave)
     else:
-        sys.exit("uso: python empilhar_livelo_center.py | empilhar_livelo_lg.py | empilhar_colombo_center.py  (ou --teste)")
+        sys.exit(
+            "uso: python empilhar_repasses.py <CHAVE>  (empilha o que faltar, grava direto)\n"
+            "     python empilhar_repasses.py <CHAVE> --teste\n"
+            "     python empilhar_repasses.py --teste  (roda todas as chaves)\n"
+            f"chaves: {', '.join(REPASSES)}"
+        )

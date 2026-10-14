@@ -13,8 +13,9 @@ sufixo da CHAVE_PRIMARIA sao lidos do proprio arquivo (ver as funcoes _convencoe
 script segue exatamente o que ja esta gravado no empilhado. Sem cache em pickle: monta, confere e grava
 na mesma execucao. Rodar de novo com um dia que ja esta no empilhado nao duplica nada (o dia e pulado).
 
-Uso (via wrapper fino, um por canal -- ver empilhar_center.py etc.):
-    python empilhar_center.py DD.MM.AAAA [...] [--publicar] [--arquivo=CAMINHO]
+Uso:
+    python empilhar_canais.py CANAL DD.MM.AAAA [...] [--publicar] [--arquivo=CAMINHO]
+    python empilhar_canais.py CANAL --teste    # roda o teste offline de 1 canal
     python empilhar_canais.py --teste          # roda os testes offline dos 8 canais
 """
 
@@ -755,6 +756,8 @@ CANAIS = {
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Center"),
         carregar_processar=_carregar_processar_glob, montar_linhas=_montar_linhas_padrao,
     ),
+    # layout 25 colunas igual WEB; SEQUENCIA (X) fixo por linha (X2=2), nao X+1 como
+    # os demais; INSTALLMENTS (O) gravado como texto.
     "COLETAS_CO05": dict(
         script_sufixo="coletas05", arquivo="COLETAS_CO05_MERCADO_2025.xlsx", aba="Base",
         pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\COLETAS CO05", sufixo="COLETAS_CO05_MERCADO",
@@ -763,6 +766,9 @@ CANAIS = {
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Coletas 05"),
         carregar_processar=_carregar_processar_glob_wildcard, montar_linhas=_montar_linhas_padrao,
     ),
+    # AB vem com cabecalhos em PORTUGUES (traduzidos) e DATE como texto com virgula
+    # (AAAA-MM-DDTHH:MM:SS,000-03:00) -- ver _carregar_ab_moveis. INSTALLMENTS (O)
+    # gravado como texto.
     "MOVEIS": dict(
         script_sufixo="moveis", arquivo="MOVEIS_MERCADO.xlsx", aba="EMPILHADO",
         pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MOVEIS", sufixo="MÓVEIS_MERCADO",
@@ -771,6 +777,8 @@ CANAIS = {
         carregar_ab=lambda caminho: _carregar_ab_moveis(caminho, ",000-03:00"),
         carregar_processar=_carregar_processar_normalizado, montar_linhas=_montar_linhas_padrao,
     ),
+    # 40 colunas (A..AN), AB com UMA ABA POR DIA DE REPASSE (nome = dia, ex. "11"):
+    # le a aba do dia informado. --ab=CAMINHO forca outro arquivo (aba = mesmo dia).
     "PRIME": dict(
         script_sufixo="prime", arquivo="PRIME_MERCADO.xlsx", aba="Fatura",
         pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\PRIME", sufixo="PRIME_MERCADO",
@@ -805,6 +813,8 @@ CANAIS = {
         carregar_ab=_carregar_ab_es,
         carregar_processar=_carregar_processar_glob_sem_ano, montar_linhas=_montar_linhas_padrao,
     ),
+    # AB vem com cabecalhos em PORTUGUES (traduzidos) e DATE como texto com virgula
+    # -- ver _carregar_ab_moveis (mesma funcao do MOVEIS).
     "ELETRO": dict(
         script_sufixo="eletro", arquivo="ELETRODOMESTICO_MERCADO.xlsx", aba="EMPILHADO",
         pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\ELETRO", sufixo="ELETRODOMÉSTICOS_MERCADO",
@@ -1148,8 +1158,19 @@ def teste(canal_nome):
 
 
 if __name__ == "__main__":
-    if "--teste" in sys.argv:
+    if len(sys.argv) > 1 and sys.argv[1] in CANAIS:
+        _canal_nome, _resto = sys.argv[1], sys.argv[2:]
+        if "--teste" in _resto:
+            teste(_canal_nome)
+        else:
+            main(_canal_nome, _resto)
+    elif "--teste" in sys.argv:
         for _canal in TESTES:
             teste(_canal)
     else:
-        sys.exit("uso: python empilhar_canais.py --teste  (rode os canais via empilhar_<canal>.py)")
+        sys.exit(
+            "uso: python empilhar_canais.py <CANAL> [dias...] [--publicar]\n"
+            "     python empilhar_canais.py <CANAL> --teste\n"
+            "     python empilhar_canais.py --teste  (roda os 8 canais)\n"
+            f"canais: {', '.join(CANAIS)}"
+        )

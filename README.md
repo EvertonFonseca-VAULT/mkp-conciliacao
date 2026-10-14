@@ -47,15 +47,8 @@ MARKETPLACE/
 │   ├── MOVEIS/                # modelo_ab.py: validação, pagamento, frete e Para Processar (compartilhado)
 │   └── WEB/                  # exemplos de Para Processar do WEB (implantação)
 ├── EMPILHAR/
-│   ├── empilhar_canais.py    # implementação comum dos 7 canais (sem TOTVS; Nº no Para Processar por SOURCE_ID)
-│   ├── empilhar_full.py      # empilhado FULL (ponto de entrada; ver empilhar_canais.py)
-│   ├── empilhar_es.py        # empilhado ES (ponto de entrada; Para Processar sem ano no nome)
-│   ├── empilhar_center.py    # empilhado CENTER (ponto de entrada)
-│   ├── empilhar_web.py       # empilhado WEB (mesmo layout 35 colunas do CENTER)
-│   ├── empilhar_prime.py     # empilhado PRIME (40 colunas, uma aba por dia de repasse)
-│   ├── empilhar_moveis.py    # empilhado MOVEIS (25 colunas, cabeçalhos em português, SEQUENCIA fixo)
-│   ├── empilhar_coletas05.py # empilhado COLETAS CO05 (25 colunas, INSTALLMENTS como texto)
-│   ├── empilhar_repasses.py / empilhar_livelo_center.py / empilhar_livelo_lg.py / empilhar_colombo_center.py / empilhar_eletro.py  # repasse fechado (ver ADR-0001)
+│   ├── empilhar_canais.py    # implementação + CLI dos 8 canais (sem TOTVS; Nº no Para Processar por SOURCE_ID)
+│   ├── empilhar_repasses.py  # implementação + CLI do repasse fechado (ver ADR-0001)
 │   └── empilhar_barra_cred.py / empilhar_kabum.py  # canais novos
 ├── CONCILIACAO/               # conciliação com o RB, classificação e dashboard
 └── DOCS/
@@ -81,11 +74,11 @@ python rodar_canal.py FULL 22.09.2026                       # 1 canal, 1 dia ún
 python rodar_canal.py TODOS 22.09.2026                      # todos os canais, 1 dia
 python rodar_canal.py FULL 11.09.2026 14.09.2026 18.09.2026 # 1 canal, vários dias — lista cada data (não é intervalo)
 
-# 3. Empilhado (os 7 canais, mesmo padrão: sem TOTVS, cruza com o Para Processar do dia por SOURCE_ID)
+# 3. Empilhado (os 8 canais, mesmo padrão: sem TOTVS, cruza com o Para Processar do dia por SOURCE_ID)
 cd ../EMPILHAR
-python empilhar_full.py 22.09.2026                        # monta e confere; NÃO grava nada
-python empilhar_full.py 22.09.2026 23.09.2026 --publicar  # grava no empilhado do X:
-python empilhar_es.py 22.09.2026 --publicar
+python empilhar_canais.py FULL 22.09.2026                        # monta e confere; NÃO grava nada
+python empilhar_canais.py FULL 22.09.2026 23.09.2026 --publicar  # grava no empilhado do X:
+python empilhar_canais.py ES 22.09.2026 --publicar
 
 # 4. Conciliação + dashboard (time: duplo clique em CONCILIACAO/iniciar_conciliacao.bat)
 #    O .bat pergunta canal e modo (data única ou intervalo).
@@ -94,7 +87,7 @@ cd ../CONCILIACAO && python interativo.py FULL 22.09
 cd ../CONCILIACAO && python interativo.py FULL --data-inicio 22.09 --data-fim 30.09
 ```
 
-Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/rodar_canal.py --teste`, `python EMPILHAR/empilhar_canais.py --teste` (roda os 7 canais), `python CONCILIACAO/dashboard.py`.
+Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/rodar_canal.py --teste`, `python EMPILHAR/empilhar_canais.py --teste` (roda os 8 canais), `python CONCILIACAO/dashboard.py`.
 
 ## Conciliação e dashboard (`CONCILIACAO`)
 
@@ -114,7 +107,7 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 | Layout de colunas do AB (35, 40, 43, 48 ou 60) | `PARA_PROCESSAR/ES/processar_es.py` (`carregar_ab`), `PARA_PROCESSAR/ES/tipagem_es.py`, `PARA_PROCESSAR/FULL/tipagem_full.py` |
 | Categorias do AB (Deduzir Cupom, Taxa financiamento…) e fórmulas de validação/pagamento/frete | `PARA_PROCESSAR/MOVEIS/modelo_ab.py` |
 | Leitura do PTI (separador, encoding, vários arquivos) | `PARA_PROCESSAR/FULL/modelo_ab_full.py` → `carregar_pti` |
-| Colunas do empilhado, convenções lidas do arquivo ou a gravação no xlsx grande (todos os 7 canais) | `EMPILHAR/empilhar_canais.py` |
+| Colunas do empilhado, convenções lidas do arquivo ou a gravação no xlsx grande (todos os 8 canais) | `EMPILHAR/empilhar_canais.py` |
 | Ordem de STATUS (REBATE, SEM DIFF, EST COM…) e cálculo de DIF | `CONCILIACAO/cruzamento.py` |
 | Config por canal da conciliação (loja, vendedor, onde está o Para Processar) | `CONCILIACAO/canais.py` |
 | Históricos e códigos de natureza do TOTVS | `CONCILIACAO/historicos.py`, `CONCILIACAO/dashboard.py` |
@@ -161,10 +154,10 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 
 **`PARA_PROCESSAR/ES/`** — `processar_es.carregar_ab` é o único ponto que muda por layout: traduz o export em português (43 colunas), aceita as 60 em outra ordem e completa as 35 do CENTER/WEB. `rodar_es.rodar(caminho_ab, caminho_pti, frete)`: com `caminho_pti=None` só faz o cruzamento TOTVS/SRI (ELETRO); com `frete=False` não lança frete (MOVEIS). `tipagem_es.py` guarda `LAYOUT_ES` e o mapa `PT_PARA_EN`; `modelo_ab_es.py` só reexporta `montar_ab_pp` e `carregar_pti` do FULL; `escolher_es.py` é o seletor de arquivo.
 
-**`EMPILHAR/empilhar_canais.py`** (+ pontos de entrada `empilhar_full.py`, `empilhar_es.py`, `empilhar_center.py`, `empilhar_web.py`, `empilhar_prime.py`, `empilhar_moveis.py`, `empilhar_coletas05.py`) — Empilhadores dos 7 canais, mesma implementação. Não carregam o TOTVS: o Nº QUE ESTÁ NO TOTVS vem do Para Processar do dia (que já fez o cruzamento com TOTVS/SRI lá na frente, em `rodar_canal.py`/`rodar_full.py`/`rodar_es.py`), cruzado com o AB por SOURCE_ID — sem SOURCE_ID no Para Processar, cai no SHIPPING_ID/ORDER_ID/EXTERNAL_REFERENCE da própria linha (0 ou 2 candidatos = para e avisa). Gravam `.novo` e fazem `os.replace` no fim (sem tráfego de rede se X: estiver em disco; usar `shutil.move` para C:→X:). Sem pickle/cache: monta, confere e grava na mesma execução. VALOR/SEQUENCIA/sufixo da CHAVE_PRIMÁRIA são lidos do próprio arquivo (`_convencoes_*`), não do código. Rodar de novo com um dia já empilhado não duplica. Nunca abrir e regravar o empilhado com openpyxl.
+**`EMPILHAR/empilhar_canais.py`** (`python empilhar_canais.py CANAL [dias...] [--publicar]`) — Empilhadores dos 8 canais, mesma implementação. Não carregam o TOTVS: o Nº QUE ESTÁ NO TOTVS vem do Para Processar do dia (que já fez o cruzamento com TOTVS/SRI lá na frente, em `rodar_canal.py`/`rodar_full.py`/`rodar_es.py`), cruzado com o AB por SOURCE_ID — sem SOURCE_ID no Para Processar, cai no SHIPPING_ID/ORDER_ID/EXTERNAL_REFERENCE da própria linha (0 ou 2 candidatos = para e avisa). Gravam `.novo` e fazem `os.replace` no fim (sem tráfego de rede se X: estiver em disco; usar `shutil.move` para C:→X:). Sem pickle/cache: monta, confere e grava na mesma execução. VALOR/SEQUENCIA/sufixo da CHAVE_PRIMÁRIA são lidos do próprio arquivo (`_convencoes_*`), não do código. Rodar de novo com um dia já empilhado não duplica. Nunca abrir e regravar o empilhado com openpyxl.
 - Layouts: CENTER/WEB/FULL/ES/MOVEIS/CO05 25 colunas; PRIME 40 colunas (uma aba por dia de repasse, com `NET_DEBIT_AMOUNT`/`RECORD_TYPE`).
 - FULL: Para Processar com ano no nome (`PROCESSAR_MERCADO FULL DD.MM.AAAA.xlsx`). ES: **sem ano** (`PROCESSAR_MERCADO COLETAS ES DD.MM.xlsx` — ver `_carregar_processar_glob_sem_ano`).
-- `empilhar.py` / `empilhar_gravar.py` / `pipeline.py`: **removidos**. Cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (backup em `C:\BACKUP EMPILHADO`); `pipeline.py` controlava lotes do FULL em SQLite (`conciliacao.db`: `sync`/`rodar <lote>`/`status`). Substituídos por `empilhar_full.py`/`empilhar_es.py` (01/10/2026).
+- `empilhar.py` / `empilhar_gravar.py` / `pipeline.py`: **removidos**. Cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (backup em `C:\BACKUP EMPILHADO`); `pipeline.py` controlava lotes do FULL em SQLite (`conciliacao.db`: `sync`/`rodar <lote>`/`status`). Substituídos por `empilhar_canais.py` (01/10/2026).
 
 ### Frente Conciliação (`CONCILIACAO`)
 
