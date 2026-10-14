@@ -213,7 +213,49 @@ def empilhar(canal):
     print(f"  gravado: {len(novas)} linhas novas, sequencia {ultima_seq + 1}..{seq}")
 
 
+def _teste():
+    """So a mecanica pura (montar linha, chave de dedupe) -- sem abrir xlsx
+    nenhum. Fixture de 16 campos na ordem F_* (ver cabecalho do arquivo)."""
+    row = (
+        "PED1", "MKT1", "SELLER1", "01/10/2026", "SITE1", "Entregue", "02/10/2026",
+        "TIPO1", "LANC1", "03/10/2026", "DESC1", 100.0, "15/10/2026", "INT1", "1/3", "obs",
+    )
+    assert _data_prevista("15/10/2026") == datetime.datetime(2026, 10, 15)
+    assert _data_prevista(datetime.datetime(2026, 10, 15)) == datetime.datetime(2026, 10, 15)
+
+    centro = _monta_center(row, seq=5)
+    assert centro[D_DATA_REPASSE] == datetime.datetime(2026, 10, 15)
+    assert centro[D_DT_CRIACAO] == "01/10/2026"  # CENTER: texto cru, igual a fonte
+    assert centro[D_DT_STATUS_PEDIDO] == "02/10/2026"  # idem
+    assert centro[D_PEDIDO_SITE] == "SITE1"  # CENTER preenche normalmente
+    assert centro[D_SEQUENCIA] == 5
+    assert centro[D_CHAVE] == '=CONCATENATE(Q{row},"_","CENTER_BARRACRED")'
+
+    web = _monta_web(row, seq=5)
+    assert web[D_DT_CRIACAO] == datetime.datetime(2026, 10, 1)  # WEB: convertido pra datetime
+    assert web[D_DT_STATUS_PEDIDO] == to_excel(datetime.datetime(2026, 10, 2))  # WEB: serial do Excel
+    assert web[D_PEDIDO_SITE] is None and web[D_STATUS_LANC] is None  # WEB: sempre em branco
+    assert web[D_DT_STATUS_LANC] is None and web[D_DESCRICAO] is None
+    assert web[D_CHAVE] == '=CONCATENATE(Q{row},"_","WEB_BARRACRED")'
+
+    # chave de dedupe: CENTER usa DT_STATUS_LANC, WEB nao (sempre None no destino, nao discrimina)
+    assert _CHAVE_FONTE["CENTER"](row) == ("PED1", "TIPO1", "1/3", "03/10/2026", 100.0)
+    assert _CHAVE_FONTE["WEB"](row) == ("PED1", "TIPO1", "1/3", 100.0)
+
+    # consistencia fonte<->destino: a chave da linha recem-montada tem que
+    # bater com a chave calculada direto da fonte (senao a linha nunca seria
+    # reconhecida como "ja existente" numa proxima rodada -- duplicaria).
+    centro[D_CHAVE] = centro[D_CHAVE].format(row=10)
+    assert _CHAVE_DESTINO["CENTER"](centro) == _CHAVE_FONTE["CENTER"](row)
+    web[D_CHAVE] = web[D_CHAVE].format(row=10)
+    assert _CHAVE_DESTINO["WEB"](web) == _CHAVE_FONTE["WEB"](row)
+    print("empilhar_barra_cred.py: ok")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in CANAIS:
-        sys.exit(f"uso: python empilhar_barra_cred.py <{'|'.join(CANAIS)}>")
-    empilhar(sys.argv[1])
+    if "--teste" in sys.argv:
+        _teste()
+    elif len(sys.argv) != 2 or sys.argv[1] not in CANAIS:
+        sys.exit(f"uso: python empilhar_barra_cred.py <{'|'.join(CANAIS)}>  |  --teste")
+    else:
+        empilhar(sys.argv[1])

@@ -213,7 +213,33 @@ def empilhar(canal):
     print(f"  gravado: {len(novas)} linhas novas")
 
 
+def _teste():
+    """So a mecanica pura (mapa de colunas, calculo de campo, chave de
+    dedupe) -- sem abrir xlsx nenhum."""
+    header = ["ID do repasse", None, "TID", "Parcela atual"]
+    assert _mapa_colunas(header) == {"ID do repasse": 0, "TID": 2, "Parcela atual": 3}
+
+    assert _data_br("10/10/2026") == datetime.datetime(2026, 10, 10)
+    assert _data_br(datetime.datetime(2026, 10, 10)) == datetime.datetime(2026, 10, 10)
+
+    linha = {
+        "Data do repasse": "10/10/2026", "Data do pedido": "09/10/2026",
+        "Número do pedido": "12345", "TID": "T1", "Parcela atual": 2,
+        "Valor do repasse financeiro da parcela (R$)": 50.0,
+    }
+    assert _valor_linha("Data_Repasse", "calc_data_repasse", linha) == datetime.datetime(2026, 10, 10)
+    assert _valor_linha("Data do pedido", "calc_data_pedido", linha) == datetime.datetime(2026, 10, 9)
+    assert _valor_linha("Pedido TOTVS", "calc_pedido_totvs", linha) == "12345-A"
+    assert _valor_linha("TID", "src:TID", linha) == "T1"
+
+    assert _chave_natural(linha) == ("T1", 2, 50.0)
+    print("empilhar_kabum.py: ok")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in CANAIS:
-        sys.exit(f"uso: python empilhar_kabum.py <{'|'.join(CANAIS)}>")
-    empilhar(sys.argv[1])
+    if "--teste" in sys.argv:
+        _teste()
+    elif len(sys.argv) != 2 or sys.argv[1] not in CANAIS:
+        sys.exit(f"uso: python empilhar_kabum.py <{'|'.join(CANAIS)}>  |  --teste")
+    else:
+        empilhar(sys.argv[1])
