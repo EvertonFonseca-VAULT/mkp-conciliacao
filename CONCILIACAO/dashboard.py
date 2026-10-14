@@ -245,6 +245,33 @@ def _cel_valor_conta(pedido, valores):
     return f'<td class="num">{_valor_ou_vazio((valores or {}).get(pedido))}</td>'
 
 
+def _diferenca_extrato(dif, total_rb, v_rb, v_rbx):
+    """Diferenca extrato = DIF - valor RB - valor RBX + TOTAL_RB -- None
+    quando o pedido nao foi achado em nenhuma das 2 contas (a bolinha fica
+    ambar nesse caso, sem mudar o STATUS da fila, que continua VERIFICAR).
+    + TOTAL_RB (achado no cruzamento inicial contra CONCILIADOR_RB.xlsx --
+    ver cruzamento.py) cancela a parte de RB/RBX que e a MESMA transacao que
+    ja gerou o DIF -- sem isso, descontava a mesma grana 2x. Ex. real
+    (10/09/2026): DIF=371.65, TOTAL_RB=1911.43, RBX=2283.08 (cancelou o
+    lancamento antigo de 1911.43 e reemitiu um agregado de 2283.08) ->
+    371.65 - 2283.08 + 1911.43 = 0 (fechou, verde). TOTAL_RB=0 (pedido nao
+    achado no cruzamento inicial) reduz pra formula de sempre (DIF-RB-RBX),
+    sem caso especial. Pedido do Everton, 16-18/09/2026. Extraido de
+    _linhas_tabela (pure, ver revisao de arquitetura, card 5): agora
+    testavel direto, sem precisar renderizar e conferir substring de HTML."""
+    if v_rb is None and v_rbx is None:
+        return None
+    return round(dif - (v_rb or 0) - (v_rbx or 0) + (total_rb or 0), 2)
+
+
+def _banco(dif, v_rbx):
+    """BANCO = RBX + DIF (sem RBX, so a DIF) -- quando a DIF e positiva e o
+    pedido ja tem valor lancado, o Everton cancela essa baixa e relanca o
+    valor do RBX + a diferenca; essa coluna ja traz a soma. Pedido do
+    Everton, 21/09/2026. Extraido de _linhas_tabela (pure, card 5)."""
+    return round((v_rbx or 0) + dif, 2)
+
+
 def _bolinha(v_rb, v_rbx, diferenca_extrato):
     """Bolinha da Dif. extrato: ambar quando o pedido nao foi encontrado nem
     no RB nem no RBX (nada pra comparar ainda); verde quando achou e a
@@ -342,10 +369,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         # formula de sempre (DIF - RB - RBX), sem precisar de caso especial.
         v_rb = (valores_rb or {}).get(pedido_mkp)
         v_rbx = (valores_rbx or {}).get(pedido_mkp)
-        diferenca_extrato = (
-            round(dif - (v_rb or 0) - (v_rbx or 0) + row.get("TOTAL_RB", 0), 2)
-            if v_rb is not None or v_rbx is not None else None
-        )
+        diferenca_extrato = _diferenca_extrato(dif, row.get("TOTAL_RB", 0), v_rb, v_rbx)
         if diferenca_extrato is None:
             cor, dica = _bolinha(v_rb, v_rbx, 0)
             cel_diferenca = f'<td class="num" title="{dica}"><span class="v nao-achado">n/e</span><span class="dot {cor}"></span></td>'
@@ -356,7 +380,7 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         # lancado, o Everton cancela essa baixa e relanca o valor do RBX +
         # a diferenca -- essa coluna ja traz a soma (e copia com 1 clique).
         # Sem RBX (None) e so a DIF. Pedido do Everton, 21/09/2026.
-        banco = round((v_rbx or 0) + dif, 2)
+        banco = _banco(dif, v_rbx)
         dica_banco = f"BANCO = RBX + DIF\nRBX {_formatar_numero(v_rbx or 0)} + DIF {_formatar_numero(dif)}"
         cel_banco = f'<td class="num banco">{_valor_copia(banco, dica=dica_banco)}</td>'
         # AB total (TOTAL_PED = REPASSE+COMISSAO+FRETE, ver cruzamento.py)
@@ -1445,6 +1469,16 @@ if __name__ == "__main__":
     # soma dos absolutos, nao o absoluto da soma: |-30|+|20|+|-10| = 60
     assert _repasse_calculado(-30.0, 20.0, -10.0) == 60.0
     assert _repasse_calculado(None, 20.0, -10.0) is None
+
+    # _diferenca_extrato/_banco (extraidos de _linhas_tabela, card 5): testaveis
+    # direto, sem montar DataFrame nem conferir substring de HTML.
+    assert _diferenca_extrato(16.48, 0, None, None) is None  # nao achado em RB nem RBX
+    # cenario real 10/09/2026 (ver docstring): cancelado+reemitido fecha em 0
+    assert _diferenca_extrato(371.65, 1911.43, None, 2283.08) == 0.0
+    # TOTAL_RB=0 (pedido novo, nao achado no cruzamento inicial): formula de sempre
+    assert _diferenca_extrato(371.65, 0, None, 371.65) == 0.0
+    assert _banco(371.65, 1911.43) == 2283.08  # RBX + DIF
+    assert _banco(41.98, None) == 41.98  # sem RBX, so a DIF
     # formatacao: menos tipografico (U+2212), milhar com ponto, decimal com virgula
     assert _numero_br(-1234.5) == "−1.234,50" and _moeda(-921.84) == "−R$ 921,84"
     assert _formatar_numero(-25.5) == "-25,50"  # pro CMM/MOV o hifen e ASCII
