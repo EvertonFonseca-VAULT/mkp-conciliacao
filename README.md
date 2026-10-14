@@ -10,7 +10,7 @@ Antes era feito com macros, planilhas e Power Query manuais (`AB_MERCADO_TOTVS.x
 Koncili ──► AB (X:)  ──► Para Processar (C:\RODAR TOTVS) ──► TOTVS
                 │                                         
                 ├──► Empilhado FULL / ES (X:, com backup)
-                └──► Conciliação (AB/RB) ──► dashboard HTML ──► baixas (Frete, Comissão, Banco)
+                └──► Conciliação (CONCILIACAO) ──► dashboard HTML ──► baixas (Frete, Comissão, Banco)
 ```
 
 Regra de validação em todos os canais: **H:M do Para Processar = RESULTADO do Koncili = VALOR_EB do calendário**.
@@ -33,60 +33,71 @@ Nos códigos de vendedor, o PTI usa `000` na frente (`000755`); CMM/MOV usam sem
 ## Estrutura
 
 ```
-Mkp/
+MARKETPLACE/
 ├── requirements.txt
-└── AB/
-    ├── koncili.py            # login no Koncili, acha o repasse, lê o RESULTADO, baixa o AB e confere com o calendário
-    ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS, ELETRO, CENTER, COLETAS CO05 e PRIME (ou TODOS) num comando
-    ├── empilhar_canais.py    # implementação comum dos 7 canais (sem TOTVS; Nº no Para Processar por SOURCE_ID)
-    ├── empilhar_full.py      # empilhado FULL (ponto de entrada; ver empilhar_canais.py)
-    ├── empilhar_es.py        # empilhado ES (ponto de entrada; Para Processar sem ano no nome)
-    ├── empilhar_center.py    # empilhado CENTER (ponto de entrada)
-    ├── empilhar_web.py       # empilhado WEB (mesmo layout 35 colunas do CENTER)
-    ├── empilhar_prime.py     # empilhado PRIME (40 colunas, uma aba por dia de repasse)
-    ├── empilhar_moveis.py    # empilhado MOVEIS (25 colunas, cabeçalhos em português, SEQUENCIA fixo)
-    ├── empilhar_coletas05.py # empilhado COLETAS CO05 (25 colunas, INSTALLMENTS como texto)
-    ├── empilhar.py           # LEGADO: empilhado FULL/ES cruzando com o TOTVS/SRI direto (pré empilhar_canais.py) — não usar mais
-    ├── empilhar_gravar.py    # LEGADO: gravação do empilhar.py — não usar mais
-    ├── pipeline.py           # execução por lote do FULL com status em SQLite (só FULL)
-    ├── FULL/                 # cruzamento AB × TOTVS/SRI + PTI (2 vendedores) e layout de 40 colunas
-    ├── ES/                   # layout de 60 colunas (também lê 43 em português e 35 do WEB/CENTER)
-    ├── MOVEIS/               # modelo_ab.py: validação, pagamento, frete e Para Processar (compartilhado)
-    ├── WEB/                  # exemplos de Para Processar do WEB (implantação)
-    └── RB/                   # conciliação com o RB, classificação e dashboard
+├── COMUM/
+│   └── calendario_alvo.py    # único arquivo usado pelas 3 frentes abaixo (KONCILI, EMPILHAR, CONCILIACAO)
+├── KONCILI/
+│   ├── koncili.py            # login no Koncili, acha o repasse, lê o RESULTADO, baixa o AB e confere com o calendário
+│   └── koncili_shopee.py     # extração + empilhado do Shopee (processo a parte, sem TOTVS/calendário)
+├── PARA_PROCESSAR/
+│   ├── rodar_canal.py        # Para Processar de FULL, ES, MOVEIS, ELETRO, CENTER, COLETAS CO05 e PRIME (ou TODOS) num comando
+│   ├── FULL/                 # cruzamento AB × TOTVS/SRI + PTI (2 vendedores) e layout de 40 colunas
+│   ├── ES/                   # layout de 60 colunas (também lê 43 em português e 35 do WEB/CENTER)
+│   ├── MOVEIS/                # modelo_ab.py: validação, pagamento, frete e Para Processar (compartilhado)
+│   └── WEB/                  # exemplos de Para Processar do WEB (implantação)
+├── EMPILHAR/
+│   ├── empilhar_canais.py    # implementação comum dos 7 canais (sem TOTVS; Nº no Para Processar por SOURCE_ID)
+│   ├── empilhar_full.py      # empilhado FULL (ponto de entrada; ver empilhar_canais.py)
+│   ├── empilhar_es.py        # empilhado ES (ponto de entrada; Para Processar sem ano no nome)
+│   ├── empilhar_center.py    # empilhado CENTER (ponto de entrada)
+│   ├── empilhar_web.py       # empilhado WEB (mesmo layout 35 colunas do CENTER)
+│   ├── empilhar_prime.py     # empilhado PRIME (40 colunas, uma aba por dia de repasse)
+│   ├── empilhar_moveis.py    # empilhado MOVEIS (25 colunas, cabeçalhos em português, SEQUENCIA fixo)
+│   ├── empilhar_coletas05.py # empilhado COLETAS CO05 (25 colunas, INSTALLMENTS como texto)
+│   ├── empilhar_repasses.py / empilhar_livelo_center.py / empilhar_livelo_lg.py / empilhar_colombo_center.py / empilhar_eletro.py  # repasse fechado (ver ADR-0001)
+│   ├── empilhar_barra_cred.py / empilhar_kabum.py  # canais novos
+│   └── LEGADO/
+│       ├── empilhar.py        # LEGADO: empilhado FULL/ES cruzando com o TOTVS/SRI direto (pré empilhar_canais.py) — não usar mais
+│       ├── empilhar_gravar.py # LEGADO: gravação do empilhar.py — não usar mais
+│       └── pipeline.py        # LEGADO: execução por lote do FULL com status em SQLite (só FULL)
+└── CONCILIACAO/               # conciliação com o RB, classificação e dashboard
 ```
 
 Layouts do AB bruto: FULL 40 colunas · ES/CO05 60 · CENTER/WEB 35 · MOVEIS/ELETRO 43 ou 48 (português).
 
+`Screaper Mercado/` (scraper Playwright/SRI/ML) e `EXTRATO CALENDARIO/` (sem relação com este projeto) ficam fora, como pastas-irmãs de `MARKETPLACE/` em `Projetos/`.
+
 ## Uso diário
 
 ```bash
-cd AB
-
 # 1. Baixa o AB do Koncili e confere com o calendário
+cd KONCILI
 python koncili.py ES 22.09.2026                  # só confere
 python koncili.py ELETRO 22.09.2026 --salvar     # grava no X: (não sobrescreve)
 
 # 2. Para Processar (não sobrescreve sem --forcar)
+cd ../PARA_PROCESSAR
 python rodar_canal.py FULL 22.09.2026                       # 1 canal, 1 dia único
 python rodar_canal.py TODOS 22.09.2026                      # todos os canais, 1 dia
 python rodar_canal.py FULL 11.09.2026 14.09.2026 18.09.2026 # 1 canal, vários dias — lista cada data (não é intervalo)
 
 # 3. Empilhado (os 7 canais, mesmo padrão: sem TOTVS, cruza com o Para Processar do dia por SOURCE_ID)
+cd ../EMPILHAR
 python empilhar_full.py 22.09.2026                        # monta e confere; NÃO grava nada
 python empilhar_full.py 22.09.2026 23.09.2026 --publicar  # grava no empilhado do X:
 python empilhar_es.py 22.09.2026 --publicar
 
-# 4. Conciliação + dashboard (time: duplo clique em RB/iniciar_conciliacao.bat)
+# 4. Conciliação + dashboard (time: duplo clique em CONCILIACAO/iniciar_conciliacao.bat)
 #    O .bat pergunta canal e modo (data única ou intervalo).
 #    Linha de comando direta:
-cd RB && python interativo.py FULL 22.09
-cd RB && python interativo.py FULL --data-inicio 22.09 --data-fim 30.09
+cd ../CONCILIACAO && python interativo.py FULL 22.09
+cd ../CONCILIACAO && python interativo.py FULL --data-inicio 22.09 --data-fim 30.09
 ```
 
-Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Testes offline: `python koncili.py --teste`, `python rodar_canal.py --teste`, `python empilhar_canais.py --teste` (roda os 7 canais), `python dashboard.py`.
+Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/rodar_canal.py --teste`, `python EMPILHAR/empilhar_canais.py --teste` (roda os 7 canais), `python CONCILIACAO/dashboard.py`.
 
-## Conciliação e dashboard (`AB/RB`)
+## Conciliação e dashboard (`CONCILIACAO`)
 
 - `DIF = REPASSE − TOTAL_RB`; contas **Original (103925)** e **Transitória (X103925)**.
 - STATUS, nesta ordem: REBATE → SEM DIFF → EST COM → MEDIACAO → VERIFICAR.
@@ -98,25 +109,26 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 
 | Quero mudar… | Abra |
 |---|---|
-| Pasta, prefixo do AB, PTI, frete ou nome de saída de um canal do Para Processar | `AB/rodar_canal.py` → `CANAIS_PP` |
-| Conta do Koncili, pasta ou layout do AB baixado | `AB/koncili.py` → `CANAIS_KONCILI` |
-| Regra de cruzamento com o TOTVS/SRI (chave SHIPPING_ID) | `AB/FULL/processar_full.py` |
-| Layout de colunas do AB (35, 40, 43, 48 ou 60) | `AB/ES/processar_es.py` (`carregar_ab`), `AB/ES/tipagem_es.py`, `AB/FULL/tipagem_full.py` |
-| Categorias do AB (Deduzir Cupom, Taxa financiamento…) e fórmulas de validação/pagamento/frete | `AB/MOVEIS/modelo_ab.py` |
-| Leitura do PTI (separador, encoding, vários arquivos) | `AB/FULL/modelo_ab_full.py` → `carregar_pti` |
-| Colunas do empilhado, convenções lidas do arquivo ou a gravação no xlsx grande (todos os 7 canais) | `AB/empilhar_canais.py` |
-| Ordem de STATUS (REBATE, SEM DIFF, EST COM…) e cálculo de DIF | `AB/RB/cruzamento.py` |
-| Config por canal da conciliação (loja, vendedor, onde está o Para Processar) | `AB/RB/canais.py` |
-| Históricos e códigos de natureza do TOTVS | `AB/RB/historicos.py`, `AB/RB/dashboard.py` |
-| Colunas, cores, copiar valor ou linhas CMM/MOV do dashboard | `AB/RB/dashboard.py` |
-| O que o scraper lê no ML/MP e como classifica as linhas | `AB/RB/scraper_ml.py`, `AB/RB/classificar_ml.py` |
-| Layout do CMM de rebate | `AB/RB/rebate_cmm.py`, `AB/RB/rebate_processar.py` |
+| Pasta, prefixo do AB, PTI, frete ou nome de saída de um canal do Para Processar | `PARA_PROCESSAR/rodar_canal.py` → `CANAIS_PP` |
+| Conta do Koncili, pasta ou layout do AB baixado | `KONCILI/koncili.py` → `CANAIS_KONCILI` |
+| Regra de cruzamento com o TOTVS/SRI (chave SHIPPING_ID) | `PARA_PROCESSAR/FULL/processar_full.py` |
+| Layout de colunas do AB (35, 40, 43, 48 ou 60) | `PARA_PROCESSAR/ES/processar_es.py` (`carregar_ab`), `PARA_PROCESSAR/ES/tipagem_es.py`, `PARA_PROCESSAR/FULL/tipagem_full.py` |
+| Categorias do AB (Deduzir Cupom, Taxa financiamento…) e fórmulas de validação/pagamento/frete | `PARA_PROCESSAR/MOVEIS/modelo_ab.py` |
+| Leitura do PTI (separador, encoding, vários arquivos) | `PARA_PROCESSAR/FULL/modelo_ab_full.py` → `carregar_pti` |
+| Colunas do empilhado, convenções lidas do arquivo ou a gravação no xlsx grande (todos os 7 canais) | `EMPILHAR/empilhar_canais.py` |
+| Ordem de STATUS (REBATE, SEM DIFF, EST COM…) e cálculo de DIF | `CONCILIACAO/cruzamento.py` |
+| Config por canal da conciliação (loja, vendedor, onde está o Para Processar) | `CONCILIACAO/canais.py` |
+| Históricos e códigos de natureza do TOTVS | `CONCILIACAO/historicos.py`, `CONCILIACAO/dashboard.py` |
+| Colunas, cores, copiar valor ou linhas CMM/MOV do dashboard | `CONCILIACAO/dashboard.py` |
+| O que o scraper lê no ML/MP e como classifica as linhas | `CONCILIACAO/scraper_ml.py`, `CONCILIACAO/classificar_ml.py` |
+| Layout do CMM de rebate | `CONCILIACAO/rebate_cmm.py`, `CONCILIACAO/rebate_processar.py` |
+| Cálculo do alvo do dia (calendário de planejamento), usado por koncili/empilhar/conciliação | `COMUM/calendario_alvo.py` |
 
 ## Módulos (documentação)
 
 ### Frente PROCESSAR (AB → Para Processar)
 
-**`AB/koncili.py`** — Baixa o AB no Koncili e confere com o calendário. Precisa de `playwright` e das variáveis `KONCILI_USUARIO` / `KONCILI_SENHA`.
+**`KONCILI/koncili.py`** — Baixa o AB no Koncili e confere com o calendário. Precisa de `playwright` e das variáveis `KONCILI_USUARIO` / `KONCILI_SENHA`.
 - `login(page, usuario, senha)`: Playwright headless. Não usa `networkidle`, porque a página nunca assenta.
 - `cabecalhos_api(page)`: a API autentica pelo header `gumgatoken`, que a própria página envia.
 - `achar_repasse(req, hdr, conta, data_iso)`: `POST /reconciliation/api/view/conciliation/search` e pega o repasse cujo período começa na data. `listar_repasses(req, hdr, conta, ini_iso, fim_iso)`: variante para intervalo (usada com `--intervalo`), retorna um repasse por dia (o mais recente, se houve reprocesso).
@@ -125,39 +137,39 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `soma_ab`, `caminho_destino(canal, data)`, `_ajustar_layout` (aba e colunas no padrão do X:; CENTER/WEB usam `COLUNAS_WEB`, 35 colunas), `conferir(...)` (AB × RESULTADO × calendário).
 - Contas em `CANAIS_KONCILI` — canal CO05 foi renomeado para `COLETAS_CO05` (29/09/2026). Nunca imprimir token ou sessão em log.
 
-**`AB/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO, CENTER ou TODOS).
+**`PARA_PROCESSAR/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO, CENTER ou TODOS).
 - `CANAIS_PP`: configuração por canal (pasta e prefixo do AB, PTI, frete, pasta e nome de saída, ano no nome). CENTER adicionado 22/09/2026 (vendedor 944, PTI `C:\TEMP\PTI CENTER.csv`, sem frete — mesmo molde do MOVEIS).
 - `caminhos(canal, data)`: devolve o AB de entrada e o nome do arquivo de saída.
 - `processar(canal, data, pasta_saida, forcar)`: FULL usa `rodar_full.rodar` (2 vendedores no PTI); os demais usam `rodar_es.rodar`. Grava a aba "Para Processar" e imprime linhas, H:M e quantos "Verificar". Não sobrescreve sem `--forcar`.
 - `main(argv)`: se o AB de um canal não está no X:, avisa e segue com os outros.
 
-**`AB/FULL/processar_full.py`** — Motor do cruzamento (tradução das macros do PB BASE.xlsm).
+**`PARA_PROCESSAR/FULL/processar_full.py`** — Motor do cruzamento (tradução das macros do PB BASE.xlsm).
 - `carregar_ab`, `marcar_flags` e `filtrar_validos` (linhas válidas, colunas T/U do Para_Processar).
 - `carregar_totvs()`: lê `TOTVS_2022`, aba "01-01 - Listagem do Browse" (cabeçalho nas linhas 1-4).
 - `cruzar_totvs(df, totvs)`: chave **SHIPPING_ID**; marca `verificar` quando não acha.
 - `resolver_pendentes_via_sri(pendentes)`: fallback no SRI para o que ficou "Verificar".
 - `gerar_para_processar(cruzado)`: monta a aba final. `_limpar_id` remove o `.0` dos IDs.
 
-**`AB/FULL/modelo_ab_full.py`** — `montar_ab_pp(para_processar)` cria os apelidos que a Validação espera (ARRUMAR, NOVO CREDITO, NOVO DEBITO, `CUSTO DE OFERECER DESCONTO` = 0). `carregar_pti(caminho)` lê o PTI (latin-1, separador `;`, aceita curinga com vários arquivos). Os outros canais reaproveitam.
+**`PARA_PROCESSAR/FULL/modelo_ab_full.py`** — `montar_ab_pp(para_processar)` cria os apelidos que a Validação espera (ARRUMAR, NOVO CREDITO, NOVO DEBITO, `CUSTO DE OFERECER DESCONTO` = 0). `carregar_pti(caminho)` lê o PTI (latin-1, separador `;`, aceita curinga com vários arquivos). Os outros canais reaproveitam.
 
-**`AB/MOVEIS/modelo_ab.py`** — Fórmulas do MODELO AB MERCADO, compartilhadas por FULL, ES e MOVEIS.
+**`PARA_PROCESSAR/MOVEIS/modelo_ab.py`** — Fórmulas do MODELO AB MERCADO, compartilhadas por FULL, ES e MOVEIS.
 - `conferencia_ab_original` e `calcular_ab_para_processar` (colunas P:U).
 - `montar_validacao`: agrega por pedido, classifica (`Deduzir Cupom`, `Deduzir Taxa financiamento CMM`…) e devolve `Verificar` quando não fecha com o PTI.
 - `montar_pagamento`, `montar_frete`, `montar_para_processar` (Pagamento + Frete + linha de ajuste) e `resumo_acao_manual`.
 - As colunas de saída do Pagamento estão em `COLUNAS_PAGAMENTO` (15 colunas, H:M = valores).
 
-**`AB/FULL/rodar_full.py`** (+ `rodar_full.bat`, `escolher_full.py`, `criar_pastas.bat`) — `rodar(caminho_ab, caminho_pti)` devolve (validação, pagamento, frete, processar). `--data DD.MM.AAAA` resolve AB e saída sozinho. `escolher_full.py` pergunta mês e arquivo. `tipagem_full.py` corrige colunas de valor que vêm como texto.
+**`PARA_PROCESSAR/FULL/rodar_full.py`** (+ `rodar_full.bat`, `escolher_full.py`, `criar_pastas.bat`) — `rodar(caminho_ab, caminho_pti)` devolve (validação, pagamento, frete, processar). `--data DD.MM.AAAA` resolve AB e saída sozinho. `escolher_full.py` pergunta mês e arquivo. `tipagem_full.py` corrige colunas de valor que vêm como texto.
 
-**`AB/ES/`** — `processar_es.carregar_ab` é o único ponto que muda por layout: traduz o export em português (43 colunas), aceita as 60 em outra ordem e completa as 35 do CENTER/WEB. `rodar_es.rodar(caminho_ab, caminho_pti, frete)`: com `caminho_pti=None` só faz o cruzamento TOTVS/SRI (ELETRO); com `frete=False` não lança frete (MOVEIS). `tipagem_es.py` guarda `LAYOUT_ES` e o mapa `PT_PARA_EN`; `modelo_ab_es.py` só reexporta `montar_ab_pp` e `carregar_pti` do FULL; `escolher_es.py` é o seletor de arquivo.
+**`PARA_PROCESSAR/ES/`** — `processar_es.carregar_ab` é o único ponto que muda por layout: traduz o export em português (43 colunas), aceita as 60 em outra ordem e completa as 35 do CENTER/WEB. `rodar_es.rodar(caminho_ab, caminho_pti, frete)`: com `caminho_pti=None` só faz o cruzamento TOTVS/SRI (ELETRO); com `frete=False` não lança frete (MOVEIS). `tipagem_es.py` guarda `LAYOUT_ES` e o mapa `PT_PARA_EN`; `modelo_ab_es.py` só reexporta `montar_ab_pp` e `carregar_pti` do FULL; `escolher_es.py` é o seletor de arquivo.
 
-**`AB/empilhar_canais.py`** (+ pontos de entrada `empilhar_full.py`, `empilhar_es.py`, `empilhar_center.py`, `empilhar_web.py`, `empilhar_prime.py`, `empilhar_moveis.py`, `empilhar_coletas05.py`) — Empilhadores dos 7 canais, mesma implementação. Não carregam o TOTVS: o Nº QUE ESTÁ NO TOTVS vem do Para Processar do dia (que já fez o cruzamento com TOTVS/SRI lá na frente, em `rodar_canal.py`/`rodar_full.py`/`rodar_es.py`), cruzado com o AB por SOURCE_ID — sem SOURCE_ID no Para Processar, cai no SHIPPING_ID/ORDER_ID/EXTERNAL_REFERENCE da própria linha (0 ou 2 candidatos = para e avisa). Gravam `.novo` e fazem `os.replace` no fim (sem tráfego de rede se X: estiver em disco; usar `shutil.move` para C:→X:). Sem pickle/cache: monta, confere e grava na mesma execução. VALOR/SEQUENCIA/sufixo da CHAVE_PRIMÁRIA são lidos do próprio arquivo (`_convencoes_*`), não do código. Rodar de novo com um dia já empilhado não duplica. Nunca abrir e regravar o empilhado com openpyxl.
+**`EMPILHAR/empilhar_canais.py`** (+ pontos de entrada `empilhar_full.py`, `empilhar_es.py`, `empilhar_center.py`, `empilhar_web.py`, `empilhar_prime.py`, `empilhar_moveis.py`, `empilhar_coletas05.py`) — Empilhadores dos 7 canais, mesma implementação. Não carregam o TOTVS: o Nº QUE ESTÁ NO TOTVS vem do Para Processar do dia (que já fez o cruzamento com TOTVS/SRI lá na frente, em `rodar_canal.py`/`rodar_full.py`/`rodar_es.py`), cruzado com o AB por SOURCE_ID — sem SOURCE_ID no Para Processar, cai no SHIPPING_ID/ORDER_ID/EXTERNAL_REFERENCE da própria linha (0 ou 2 candidatos = para e avisa). Gravam `.novo` e fazem `os.replace` no fim (sem tráfego de rede se X: estiver em disco; usar `shutil.move` para C:→X:). Sem pickle/cache: monta, confere e grava na mesma execução. VALOR/SEQUENCIA/sufixo da CHAVE_PRIMÁRIA são lidos do próprio arquivo (`_convencoes_*`), não do código. Rodar de novo com um dia já empilhado não duplica. Nunca abrir e regravar o empilhado com openpyxl.
 - Layouts: CENTER/WEB/FULL/ES/MOVEIS/CO05 25 colunas; PRIME 40 colunas (uma aba por dia de repasse, com `NET_DEBIT_AMOUNT`/`RECORD_TYPE`).
 - FULL: Para Processar com ano no nome (`PROCESSAR_MERCADO FULL DD.MM.AAAA.xlsx`). ES: **sem ano** (`PROCESSAR_MERCADO COLETAS ES DD.MM.xlsx` — ver `_carregar_processar_glob_sem_ano`).
-- `empilhar.py` / `empilhar_gravar.py`: **legado**, cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (cache em `AB/empilhar_cache/`, backup em `C:\BACKUP EMPILHADO`). Substituídos por `empilhar_full.py`/`empilhar_es.py` (01/10/2026) — não usar mais.
+- `empilhar.py` / `empilhar_gravar.py`: **legado**, cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (cache em `EMPILHAR/LEGADO/empilhar_cache/`, backup em `C:\BACKUP EMPILHADO`). Substituídos por `empilhar_full.py`/`empilhar_es.py` (01/10/2026) — não usar mais. Movidos pra `EMPILHAR/LEGADO/`.
 
-**`AB/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard. Diferente do lote "manual" do `rodar_canal.py` (lista de datas na linha de comando, sem persistir nada) — este rastreia status (pendente/rodado/erro) por lote no banco. Só existe pro FULL.
+**`EMPILHAR/LEGADO/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard. Diferente do lote "manual" do `rodar_canal.py` (lista de datas na linha de comando, sem persistir nada) — este rastreia status (pendente/rodado/erro) por lote no banco. Só existe pro FULL.
 
-### Frente Conciliação (`AB/RB`)
+### Frente Conciliação (`CONCILIACAO`)
 
 **Entrada e orquestração**
 - `interativo.py`: assistente (`iniciar_conciliacao.bat`). Modo direto: `python interativo.py FULL DD.MM [--scraper] [--saida-pasta X]` (posicionais) ou com flags `--canal`/`--data`. Modo intervalo: `--data-inicio DD.MM --data-fim DD.MM` (sem abrir navegador repetidamente). Imprime linha `RESUMO|canal|data|H:M=…|VERIFICAR=…|CALENDARIO=SIM/NAO` que o .bat captura e exibe. Exige `AUXILIAR\rb.xlsx`, `rbx.xlsx` e `C:\TEMP\Conciliador - Backup\CONCILIADOR_RB.xlsx` com **Dt.Ref igual ao dia**; senão recusa.
@@ -185,7 +197,7 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 - `rebate_fora_da_regra.py`: lê o resultado do TOTVS (SpreadsheetML disfarçado de .xls ou .xlsx) e monta o CMM dos "Fora da Regra".
 - `conferir_rbx.py` e `test_interativo.py` completam a pasta (conferência e teste do assistente).
 
-**`AB/RB/dashboard.py`** — HTML único e offline. `gerar_dashboard(resultado, fila_verificar, rebate_cmm, …)` preenche o template com placeholders `@@NOME@@`.
+**`CONCILIACAO/dashboard.py`** — HTML único e offline. `gerar_dashboard(resultado, fila_verificar, rebate_cmm, …)` preenche o template com placeholders `@@NOME@@`.
 - `_faixa_status`: mostra se o dia fecha com o calendário. Alvo e Calculado copiam só os dígitos (212.638,47 → `21263847`).
 - `_linhas_tabela`: colunas da fila VERIFICAR, na ordem `Aj. | RBX | RB | Dif. extrato | AB total | Pedido | Descrição | DIF | Frete | Comissão | BANCO | [Marcação] | Desc/Bônus | Repasse | Rebate`. O cabeçalho (`<thead>`) fica na mesma função e tem que seguir a mesma ordem.
 - BANCO = RBX + DIF (sem RBX, só a DIF). Frete aparece em valor absoluto quando a DIF é positiva. Frete, Comissão e BANCO copiam ao clicar (`_valor_copia`: vírgula decimal, sem milhar, ex.: `586,94`).
