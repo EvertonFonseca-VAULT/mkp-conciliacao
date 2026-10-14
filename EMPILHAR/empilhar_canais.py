@@ -743,6 +743,9 @@ _COLUNAS_TEXTO_PRIME = {"B", "C", "D", "E", "F", "P", "Q", "R", "T", "U", "V", "
                          "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AJ", "AK"}
 assert len(_COLUNAS_PRIME) == 40
 
+# So fatos de layout de Excel/saida desse front -- identidade do canal (loja
+# do calendario, vendedor, raiz TOTVS) mora em CONCILIACAO/canais.py (FONTE
+# UNICA); nao duplicar aqui (ver revisao de arquitetura de 14/10/2026).
 CANAIS = {
     "CENTER": dict(
         script_sufixo="center", arquivo="CENTER_MERCADO.xlsx", aba="Base",

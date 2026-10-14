@@ -29,10 +29,12 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "COMUM"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "CONCILIACAO"))
 
 import pandas as pd
 from datetime import datetime
 from calendario_alvo import buscar_alvo_loja
+from canais import CANAIS as _CANAIS_CANONICOS
 
 URL = "https://components.koncili.com"
 API = "https://api.koncili.com"
@@ -53,26 +55,46 @@ COLUNAS_WEB = _BASE_35 + ["CURRENCY", "TAXES_DISAGGREGATED", "SHIPPING_ID", "SHI
 
 # conta = nome da CONTA no Koncili; pasta/prefixo = onde o AB mora no X:;
 # subpasta = "antigo" so no ES (la o layout de 60 colunas em ingles fica
-# separado do layout novo em portugues); loja = nome da LOJA no calendario.
+# separado do layout novo em portugues); loja = nome da LOJA no calendario
+# (preenchida abaixo a partir de canais.py -- CONCILIACAO/canais.py e a
+# FONTE UNICA, ver revisao de arquitetura de 14/10/2026).
 CANAIS_KONCILI = {
-    "ES": {"conta": "ECONTINENTAL ES", "pasta": "COLETAS ES", "prefixo": "MERCADO COLETAS ES", "subpasta": "antigo", "loja": "COLETAS ES"},
-    "ELETRO": {"conta": "WEBCO ELETRO", "pasta": "ELETRODOMESTICO", "prefixo": "MERCADO ELETRODOMESTICO", "subpasta": "", "loja": "ELETRO"},
-    "MOVEIS": {"conta": "WEBCO MÓVEIS", "pasta": "MOVEIS", "prefixo": "MERCADO MOVEIS", "subpasta": "", "loja": "MOVEIS"},
-    "PRIME": {"conta": "WEBCOPRIME", "pasta": "PRIME", "prefixo": "MERCADO PRIME", "subpasta": "", "loja": "PRIME"},
+    "ES": {"conta": "ECONTINENTAL ES", "pasta": "COLETAS ES", "prefixo": "MERCADO COLETAS ES", "subpasta": "antigo"},
+    "ELETRO": {"conta": "WEBCO ELETRO", "pasta": "ELETRODOMESTICO", "prefixo": "MERCADO ELETRODOMESTICO", "subpasta": ""},
+    "MOVEIS": {"conta": "WEBCO MÓVEIS", "pasta": "MOVEIS", "prefixo": "MERCADO MOVEIS", "subpasta": ""},
+    "PRIME": {"conta": "WEBCOPRIME", "pasta": "PRIME", "prefixo": "MERCADO PRIME", "subpasta": ""},
     # Contas descobertas casando RESULTADO x calendario (valor E dia, 11-12 dias
     # cada, 19/09/2026) -- nao pelo nome. FULL: o export do Koncili (40 colunas)
     # e identico ao do X:, so a aba vira "Relatorio". CENTER/WEB: gravam no
     # layout de 35 colunas do X:.
-    "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "loja": "FULL", "aba": "Relatorio"},
-    "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "loja": "CENTER", "aba": "Plan1", "colunas": COLUNAS_CENTER},
-    "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "loja": "WEB", "aba": "Planilha1", "colunas": COLUNAS_WEB},
+    "FULL": {"conta": "E CONTINENTAL", "pasta": "FULL", "prefixo": "MERCADO FULL", "subpasta": "", "aba": "Relatorio"},
+    "CENTER": {"conta": "CONTINENTALCENTER", "pasta": "CENTER", "prefixo": "MERCADO CENTER", "subpasta": "", "aba": "Plan1", "colunas": COLUNAS_CENTER},
+    "WEB": {"conta": "WEB CONTINENTAL", "pasta": "WEB", "prefixo": "MERCADO WEB", "subpasta": "", "aba": "Planilha1", "colunas": COLUNAS_WEB},
     # CO05: achado 23/09/2026 -- o X: usa o MESMO layout de 60 colunas do ES
     # (so ordem diferente, aba "Sheet0"), nao "48 colunas em portugues" como
     # se pensava antes. Sem "aba"/"colunas" (igual ES): salva a "Sheet0" do
     # jeito que o Koncili exporta, sem reajuste -- processar_es.carregar_ab
     # ja reordena as 60 colunas sozinho. "salvar" removido (era False).
-    "COLETAS_CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": "", "loja": "COLETAS 05"},
+    "COLETAS_CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": ""},
 }
+
+# chave aqui -> chave em canais.py (CONCILIACAO), so onde o nome diverge.
+_ALIAS_CANAL_CANONICO = {"COLETAS_CO05": "CO05"}
+
+def _loja_canonica(canal):
+    canonico = _ALIAS_CANAL_CANONICO.get(canal, canal)
+    return _CANAIS_CANONICOS.get(canonico, {}).get("loja_calendario")
+
+for _canal, _cfg in CANAIS_KONCILI.items():
+    _cfg["loja"] = _loja_canonica(_canal)
+del _canal, _cfg
+
+# COLETAS_CO05: loja_calendario de canais.py e "COLETAS CO05", mas o valor usado
+# aqui sempre foi "COLETAS 05" -- divergencia real, achada na revisao de
+# arquitetura de 14/10/2026 (nao sei qual bate com o LOJA real do calendario).
+# Mantido o valor atual pra nao mudar comportamento; perguntar pro Everton qual
+# esta certo antes de unificar de verdade esse canal.
+CANAIS_KONCILI["COLETAS_CO05"]["loja"] = "COLETAS 05"
 
 
 def _para_iso(data):

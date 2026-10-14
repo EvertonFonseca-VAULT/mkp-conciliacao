@@ -56,12 +56,11 @@ MARKETPLACE/
 │   ├── empilhar_moveis.py    # empilhado MOVEIS (25 colunas, cabeçalhos em português, SEQUENCIA fixo)
 │   ├── empilhar_coletas05.py # empilhado COLETAS CO05 (25 colunas, INSTALLMENTS como texto)
 │   ├── empilhar_repasses.py / empilhar_livelo_center.py / empilhar_livelo_lg.py / empilhar_colombo_center.py / empilhar_eletro.py  # repasse fechado (ver ADR-0001)
-│   ├── empilhar_barra_cred.py / empilhar_kabum.py  # canais novos
-│   └── LEGADO/
-│       ├── empilhar.py        # LEGADO: empilhado FULL/ES cruzando com o TOTVS/SRI direto (pré empilhar_canais.py) — não usar mais
-│       ├── empilhar_gravar.py # LEGADO: gravação do empilhar.py — não usar mais
-│       └── pipeline.py        # LEGADO: execução por lote do FULL com status em SQLite (só FULL)
-└── CONCILIACAO/               # conciliação com o RB, classificação e dashboard
+│   └── empilhar_barra_cred.py / empilhar_kabum.py  # canais novos
+├── CONCILIACAO/               # conciliação com o RB, classificação e dashboard
+└── DOCS/
+    ├── ADR/                    # decisões de arquitetura (ex.: ADR-0001)
+    └── AGENTS/                 # domínio e issue tracker, pra agentes/CLAUDE.md
 ```
 
 Layouts do AB bruto: FULL 40 colunas · ES/CO05 60 · CENTER/WEB 35 · MOVEIS/ELETRO 43 ou 48 (português).
@@ -165,9 +164,7 @@ Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Test
 **`EMPILHAR/empilhar_canais.py`** (+ pontos de entrada `empilhar_full.py`, `empilhar_es.py`, `empilhar_center.py`, `empilhar_web.py`, `empilhar_prime.py`, `empilhar_moveis.py`, `empilhar_coletas05.py`) — Empilhadores dos 7 canais, mesma implementação. Não carregam o TOTVS: o Nº QUE ESTÁ NO TOTVS vem do Para Processar do dia (que já fez o cruzamento com TOTVS/SRI lá na frente, em `rodar_canal.py`/`rodar_full.py`/`rodar_es.py`), cruzado com o AB por SOURCE_ID — sem SOURCE_ID no Para Processar, cai no SHIPPING_ID/ORDER_ID/EXTERNAL_REFERENCE da própria linha (0 ou 2 candidatos = para e avisa). Gravam `.novo` e fazem `os.replace` no fim (sem tráfego de rede se X: estiver em disco; usar `shutil.move` para C:→X:). Sem pickle/cache: monta, confere e grava na mesma execução. VALOR/SEQUENCIA/sufixo da CHAVE_PRIMÁRIA são lidos do próprio arquivo (`_convencoes_*`), não do código. Rodar de novo com um dia já empilhado não duplica. Nunca abrir e regravar o empilhado com openpyxl.
 - Layouts: CENTER/WEB/FULL/ES/MOVEIS/CO05 25 colunas; PRIME 40 colunas (uma aba por dia de repasse, com `NET_DEBIT_AMOUNT`/`RECORD_TYPE`).
 - FULL: Para Processar com ano no nome (`PROCESSAR_MERCADO FULL DD.MM.AAAA.xlsx`). ES: **sem ano** (`PROCESSAR_MERCADO COLETAS ES DD.MM.xlsx` — ver `_carregar_processar_glob_sem_ano`).
-- `empilhar.py` / `empilhar_gravar.py`: **legado**, cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (cache em `EMPILHAR/LEGADO/empilhar_cache/`, backup em `C:\BACKUP EMPILHADO`). Substituídos por `empilhar_full.py`/`empilhar_es.py` (01/10/2026) — não usar mais. Movidos pra `EMPILHAR/LEGADO/`.
-
-**`EMPILHAR/LEGADO/pipeline.py`** — Controle de lotes do FULL em SQLite (`conciliacao.db`): `sync` (lotes novos), `rodar <lote>` e `status`. Alimenta a tabela de lotes do dashboard. Diferente do lote "manual" do `rodar_canal.py` (lista de datas na linha de comando, sem persistir nada) — este rastreia status (pendente/rodado/erro) por lote no banco. Só existe pro FULL.
+- `empilhar.py` / `empilhar_gravar.py` / `pipeline.py`: **removidos**. Cruzavam direto com `TOTVS_2022.xlsx`/SRI no momento do empilhado (backup em `C:\BACKUP EMPILHADO`); `pipeline.py` controlava lotes do FULL em SQLite (`conciliacao.db`: `sync`/`rodar <lote>`/`status`). Substituídos por `empilhar_full.py`/`empilhar_es.py` (01/10/2026).
 
 ### Frente Conciliação (`CONCILIACAO`)
 
@@ -239,8 +236,6 @@ python -m venv .venv
 pip install -r requirements.txt
 playwright install chromium   # login do Koncili e scraper do ML
 ```
-
-Nunca usou venv? Veja a aula básica em [`docs/VENV.md`](docs/VENV.md) (para que serve, como ativar e desativar).
 
 O SRI (fallback do cruzamento em `processar_full.py`) e o scraper do ML/MP usam o projeto separado **Screaper Mercado**, clonado em `Desktop\Projetos\Screaper Mercado` (`Pagina.py` e o venv com playwright). O `interativo.py --scraper` troca para o Python desse venv sozinho. `koncili.py` também precisa de `playwright`, no venv atual ou no do Screaper.
 

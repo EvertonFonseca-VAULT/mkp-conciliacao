@@ -47,6 +47,9 @@ RODAR_TOTVS = r"C:\RODAR TOTVS"
 
 # ab_sub: subpasta do AB (ES: "antigo" = layout de 60 colunas); ano_no_nome:
 # a saida de MOVEIS leva o ano no nome (dd.mm.aaaa), as outras so dd.mm.
+# So fatos de localizacao do AB/Para Processar desse front -- identidade do
+# canal (loja do calendario, vendedor, raiz TOTVS) mora em CONCILIACAO/canais.py
+# (FONTE UNICA); nao duplicar aqui (ver revisao de arquitetura de 14/10/2026).
 CANAIS_PP = {
     "FULL": dict(ab_pasta="FULL", ab_prefixo="MERCADO FULL", ab_sub="", pti=r"C:\TEMP\PTI FULL*.csv", frete=True,
                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "FULL"), saida_prefixo="PROCESSAR_MERCADO FULL", ano_no_nome=True),
@@ -84,6 +87,10 @@ def caminhos(canal, data):
     dia, mes, ano = data.split(".")
     partes = [PASTA_AB, c["ab_pasta"], ano, f"{mes}.{ano}"] + ([c["ab_sub"]] if c["ab_sub"] else [])
     ab = os.path.join(*partes, f"{c['ab_prefixo']} {data}.xlsx")
+    if c["ab_sub"] and not os.path.exists(ab):  # ES a partir de 10.2026: sem subpasta "antigo"
+        ab_sem_sub = os.path.join(PASTA_AB, c["ab_pasta"], ano, f"{mes}.{ano}", f"{c['ab_prefixo']} {data}.xlsx")
+        if os.path.exists(ab_sem_sub):
+            ab = ab_sem_sub
     nome = f"{c['saida_prefixo']} {data if c['ano_no_nome'] else f'{dia}.{mes}'}.xlsx"
     return ab, nome
 
