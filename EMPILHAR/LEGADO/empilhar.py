@@ -30,8 +30,8 @@ import time
 from datetime import datetime, timedelta
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
-for sub in ("FULL", "ES", "MOVEIS", "RB"):
-    sys.path.insert(0, os.path.join(_AQUI, sub))
+for sub in ("PARA_PROCESSAR/FULL", "PARA_PROCESSAR/ES", "COMUM", "KONCILI"):
+    sys.path.insert(0, os.path.join(_AQUI, "..", "..", sub))
 sys.path.insert(0, _AQUI)
 
 import pandas as pd

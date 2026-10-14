@@ -87,7 +87,7 @@ def enriquecer(resultado, raiz, ml_dados=None, rebate_lancado_rbx=None):
         if status == "SEM DIFF":
             df.at[i, "ACAO_SUGERIDA"] = "Nada a fazer."
             continue
-        if status == "REBATE":
+        if status == "REBATE" and row["DIF"] == 0:
             df.at[i, "ACAO_SUGERIDA"] = (
                 f"Resolvido pela formula -- incluir na planilha CMM (lote) o rebate de {row['REBATE']:.2f}."
             )
@@ -96,15 +96,24 @@ def enriquecer(resultado, raiz, ml_dados=None, rebate_lancado_rbx=None):
             df.at[i, "ACAO_SUGERIDA"] = "Resolvido pela formula -- estorno de comissao."
             continue
 
-        # status == VERIFICAR: aqui e onde o scraper ajuda de verdade
+        # status == VERIFICAR, ou REBATE com DIF != 0 (cupom/CMM resolvido
+        # pela formula, MAS tem um gap de banco sem relacao com o cupom que
+        # precisa do scraper que nem qualquer VERIFICAR -- ver
+        # _candidatos_verificar em rodar_conciliacao_rb.py e docstring deste
+        # modulo). nota_cmm so pra lembrar que o rebate em si ja esta
+        # resolvido, separado do que a sugestao abaixo resolve.
+        nota_cmm = (
+            f"[Rebate de {row['REBATE']:.2f} ja resolvido pela formula, vai pro CMM separado -- "
+            "a sugestao abaixo e so pro gap de banco, sem relacao com o cupom] "
+        ) if status == "REBATE" else ""
         dados = ml_dados.get(row["PEDIDO_MKP"])
 
         ja_na_rbx = rebate_lancado_rbx.get(row["PEDIDO_MKP"])
-        aviso_rebate = (
+        aviso_rebate = nota_cmm + (
             f"⚠ Rebate desse pedido ja tem movimento na RBX hoje ({ja_na_rbx:.2f}) -- "
             "conferir antes de lancar/cancelar rebate de novo no CMM (pode ja estar la, ver 'Cancelamento de rebate' "
             "ou credito direto do ML na RBX). "
-        ) if ja_na_rbx else ""
+        ) if ja_na_rbx else nota_cmm
 
         if not dados or "erro" in dados:
             df.at[i, "ACAO_SUGERIDA"] = aviso_rebate + "Nao encontrado no ML/MP (ou erro na busca) -- confirmar numero do pedido manualmente."
@@ -256,4 +265,22 @@ if __name__ == "__main__":
     assert "⚠" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]  # ja cancelado na RBX -- avisa
     assert "-136.16" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]
     assert "Sinal de estorno/cancelamento" in linha3["ACAO_SUGERIDA"], linha3["ACAO_SUGERIDA"]  # aviso NAO troca a acao, so avisa antes
+
+    # REBATE com DIF == 0 (cupom resolvido, banco ja bateu certo): continua
+    # so a mensagem da formula, NUNCA entra no scraper.
+    resultado_rebate = pd.DataFrame([
+        {"STATUS": "REBATE", "PEDIDO_MKP": "1", "REPASSE": 100.0, "TOTAL_RB": 100.0, "DIF": 0.0, "REBATE": -40.40},
+        {"STATUS": "REBATE", "PEDIDO_MKP": "2", "REPASSE": 686.12, "TOTAL_RB": 551.01, "DIF": 135.11, "REBATE": -40.40},
+    ])
+    ml_dados_rebate = {"2": {"comissao": -10.0, "envio": None, "desconto_bonus": None, "total": 686.12, "rebate": None}}
+    df_rebate = enriquecer(resultado_rebate, "MKP_MELI_WE", ml_dados_rebate, None)
+    linha_a = df_rebate.iloc[0]
+    assert linha_a["ACAO_SUGERIDA"] == "Resolvido pela formula -- incluir na planilha CMM (lote) o rebate de -40.40."
+    assert linha_a["ML_TOTAL"] is None, linha_a["ML_TOTAL"]  # nunca passou pelo scraper
+    # REBATE com DIF != 0 (cupom estornado, mas tem gap de banco sem
+    # relacao): usa o scraper que nem VERIFICAR, so avisando que o rebate em
+    # si ja esta resolvido.
+    linha_b = df_rebate.iloc[1]
+    assert "[Rebate de -40.40 ja resolvido pela formula" in linha_b["ACAO_SUGERIDA"], linha_b["ACAO_SUGERIDA"]
+    assert linha_b["ML_TOTAL"] == 686.12, linha_b["ML_TOTAL"]  # passou pelo scraper de verdade
     print("enriquecer.py: ok")

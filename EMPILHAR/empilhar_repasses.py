@@ -44,10 +44,20 @@ def _parse_data(s):
 # descoberta de periodo pendente -- generico: cada chave so declara como resolver a data
 # de um arquivo a partir do nome (sem abrir o arquivo -- so olhando pasta/nome)
 # ======================================================================================
-def listar_periodos(pasta_fonte, padrao_arquivo, resolver_data):
+def listar_periodos(pasta_fonte, padrao_arquivo, resolver_data, janela_a_partir_de=None, meses_de_tolerancia=2):
     """{data: (caminho_ou_None, candidatos_ambiguos_ou_None)} -- um item por data resolvida.
     None no caminho quer dizer que 2+ arquivos resolveram pra mesma data (so importa se a data
-    for mesmo pendente -- quem decide isso e o main())."""
+    for mesmo pendente -- quem decide isso e o main()).
+
+    So entra pasta de mes dentro da janela (mes de `janela_a_partir_de` menos `meses_de_tolerancia`
+    em diante) -- sem isso, um buraco de calendario de anos atras (nunca preenchido de proposito)
+    vira "pendente" so porque a data nao esta lá, e um dia esquecido recente (ex. dia 21 chegando
+    depois do dia 30 do mesmo mes) precisa continuar alcancavel. `janela_a_partir_de=None` nao
+    filtra nada (primeira carga, sem nada empilhado ainda)."""
+    limite_mes = None
+    if janela_a_partir_de is not None:
+        limite_mes = janela_a_partir_de.year * 12 + janela_a_partir_de.month - meses_de_tolerancia
+
     candidatos = {}
     for pasta_ano in sorted(pasta_fonte.glob("[0-9][0-9][0-9][0-9]")):
         for pasta_mes in sorted(pasta_ano.glob("*.????")):
@@ -55,6 +65,8 @@ def listar_periodos(pasta_fonte, padrao_arquivo, resolver_data):
             if not m:
                 continue
             mes, ano = int(m.group(1)), int(m.group(2))
+            if limite_mes is not None and (ano * 12 + mes) < limite_mes:
+                continue
             for f in pasta_mes.glob("*.xlsx"):
                 if _EXCLUIR_ARQUIVO.match(f.name) or _EXCLUIR_NOME.search(f.stem) or not padrao_arquivo.search(f.stem):
                     continue
@@ -113,6 +125,18 @@ def _ultima_data(ws, col):
     return ultima
 
 
+def _datas_existentes(ws, col):
+    """Datas ja gravadas (nao so a ultima) -- um dia preenchido depois de um buraco (ex. dia 21
+    chegando depois do dia 30 ja empilhado) precisa continuar pendente, nao so o que e > ultima."""
+    idx = col - 1
+    datas = set()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        d = row[idx]
+        if isinstance(d, datetime.datetime):
+            datas.add(d)
+    return datas
+
+
 # ======================================================================================
 # principal -- generico, despacha pro cadastro da chave
 # ======================================================================================
@@ -122,16 +146,18 @@ def main(chave, argv):
     ws = wb[cfg["aba_dados"]]
     ws_cal = wb[cfg["aba_calendario"]]
 
-    ultima_dados = _ultima_data(ws, 1)
-    ultima_cal = _ultima_data(ws_cal, cfg["col_data_cal"])
+    datas_dados = _datas_existentes(ws, 1)
+    datas_cal = _datas_existentes(ws_cal, cfg["col_data_cal"])
     print("%s -- ultima data empilhada: %s | ultima no calendario: %s" % (
-        chave, ultima_dados.date() if ultima_dados else "nenhuma", ultima_cal.date() if ultima_cal else "nenhuma"))
+        chave, max(datas_dados).date() if datas_dados else "nenhuma", max(datas_cal).date() if datas_cal else "nenhuma"))
 
-    periodos = listar_periodos(cfg["pasta_fonte"], cfg["padrao_arquivo"], cfg["resolver_periodo"])
+    datas_conhecidas = datas_dados | datas_cal
+    janela = max(datas_conhecidas) if datas_conhecidas else None
+    periodos = listar_periodos(cfg["pasta_fonte"], cfg["padrao_arquivo"], cfg["resolver_periodo"], janela)
     pendentes = {
         data: (arq, cand)
         for data, (arq, cand) in periodos.items()
-        if (ultima_dados is None or data > ultima_dados) or (ultima_cal is None or data > ultima_cal)
+        if data not in datas_dados or data not in datas_cal
     }
     if not pendentes:
         print("nada novo pra empilhar (dados e calendario em dia).")
@@ -160,8 +186,8 @@ def main(chave, argv):
 
     for data in sorted(pendentes):
         arq, _cand = pendentes[data]
-        precisa_dados = ultima_dados is None or data > ultima_dados
-        precisa_cal = ultima_cal is None or data > ultima_cal
+        precisa_dados = data not in datas_dados
+        precisa_cal = data not in datas_cal
 
         linhas, dados_periodo = cfg["extrair"](arq, data)
         if not linhas:

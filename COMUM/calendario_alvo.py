@@ -11,10 +11,12 @@ alvo do dia -- pedido do Everton, ver dashboard.py.
 
 import glob
 import os
+import sys
 import unicodedata
 
 import openpyxl
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "CONCILIACAO"))
 from canais import CANAIS
 
 PASTA_CALENDARIO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CALENDÁRIO"

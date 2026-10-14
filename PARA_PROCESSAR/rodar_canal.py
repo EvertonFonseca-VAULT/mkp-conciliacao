@@ -49,26 +49,32 @@ RODAR_TOTVS = r"C:\RODAR TOTVS"
 # a saida de MOVEIS leva o ano no nome (dd.mm.aaaa), as outras so dd.mm.
 CANAIS_PP = {
     "FULL": dict(ab_pasta="FULL", ab_prefixo="MERCADO FULL", ab_sub="", pti=r"C:\TEMP\PTI FULL*.csv", frete=True,
-                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "FULL"), saida_prefixo="PROCESSAR_MERCADO FULL", ano_no_nome=True),
+                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "FULL"), saida_prefixo="PROCESSAR_MERCADO FULL", ano_no_nome=True),
     "ES": dict(ab_pasta="COLETAS ES", ab_prefixo="MERCADO COLETAS ES", ab_sub="antigo", pti=r"C:\TEMP\PTI ES.csv", frete=True,
-               saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "COLETAS ES"), saida_prefixo="PROCESSAR_MERCADO COLETAS ES", ano_no_nome=False),
+               saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "COLETAS ES"), saida_prefixo="PROCESSAR_MERCADO COLETAS ES", ano_no_nome=False),
     "MOVEIS": dict(ab_pasta="MOVEIS", ab_prefixo="MERCADO MOVEIS", ab_sub="", pti=r"C:\TEMP\PTI MOVEIS.csv", frete=False,
-                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MOVEIS"), saida_prefixo="PROCESSAR_MERCADO MOVEIS", ano_no_nome=True),
+                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "MOVEIS"), saida_prefixo="PROCESSAR_MERCADO MOVEIS", ano_no_nome=True),
     "ELETRO": dict(ab_pasta="ELETRODOMESTICO", ab_prefixo="MERCADO ELETRODOMESTICO", ab_sub="", pti=None, frete=False,
-                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "ELETRO"), saida_prefixo="PROCESSAR_MERCADO ELETRODOMESTICO", ano_no_nome=True),
+                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "ELETRO"), saida_prefixo="PROCESSAR_MERCADO ELETRODOMESTICO", ano_no_nome=True),
     "CENTER": dict(ab_pasta="CENTER", ab_prefixo="MERCADO CENTER", ab_sub="", pti=r"C:\TEMP\PTI CENTER.csv", frete=False,
-                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "CENTER"), saida_prefixo="PROCESSAR_MERCADO CENTER", ano_no_nome=True),
+                   saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "CENTER"), saida_prefixo="PROCESSAR_MERCADO CENTER", ano_no_nome=True),
     "CO05": dict(ab_pasta="COLETAS CO05", ab_prefixo="MERCADO COLETAS CO05", ab_sub="", pti=r"C:\TEMP\PTI COLETAS 05.csv", frete=True,
-                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "COLETAS CO05"), saida_prefixo="PROCESSAR_MERCADO COLETAS CO05", ano_no_nome=False),
+                 saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "COLETAS CO05"), saida_prefixo="PROCESSAR_MERCADO COLETAS CO05", ano_no_nome=False),
     # PRIME: PTI chegou 23/09/2026 (vendedor 657) -- frete=False (loja propria,
     # nao e canal de coleta), confirmado com dado real no mesmo dia: H:M = Koncili
     # = calendario nos 5 dias testados (11, 14, 16, 17 e 18.09.2026).
-    "PRIME": dict(ab_pasta="PRIME", ab_prefixo="MERCADO PRIME", ab_sub="", pti=r"C:\TEMP\PTI_PRIME.csv", frete=False,
-                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "PRIME"), saida_prefixo="PROCESSAR_MERCADO PRIME", ano_no_nome=True),
+    "PRIME": dict(ab_pasta="PRIME", ab_prefixo="MERCADO PRIME", ab_sub="", pti=r"C:\TEMP\PTI PRIME.csv", frete=False,
+                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "PRIME"), saida_prefixo="PROCESSAR_MERCADO PRIME", ano_no_nome=True),
     # WEB (vendedor 578): sem frete, igual aos manuais em AB/WEB -- 09.09 bate linha a
     # linha; o manual "10.09" e na verdade o AB de 08.09 (bate o H:M 173.588,58). 24/09/2026.
+    # ajustar_cupom existe em rodar_es.rodar()/_somar_cupom_efetivo (cruza o
+    # Para Processar final com o AB original e soma o EFFECTIVE_COUPON_AMOUNT
+    # do pedido em COUPON_AMOUNT) mas fica DESLIGADO aqui de proposito: so foi
+    # testado no WEB 01.10.2026 (bateu 70.492,16 com o Koncili/calendario,
+    # Verificar nao piorou) -- aguardando o Everton processar esse dia no
+    # TOTVS e confirmar antes de ligar pra producao/outros dias. 13/10/2026.
     "WEB": dict(ab_pasta="WEB", ab_prefixo="MERCADO WEB", ab_sub="", pti=r"C:\TEMP\PTI WEB.csv", frete=False,
-                saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "WEB"), saida_prefixo="PROCESSAR_MERCADO WEB", ano_no_nome=True),
+                saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "WEB"), saida_prefixo="PROCESSAR_MERCADO WEB", ano_no_nome=True),
 }
 
 
@@ -92,7 +98,7 @@ def processar(canal, data, pasta_saida=None, forcar=False):
     if canal == "FULL":  # pipeline proprio (2 vendedores no PTI, modelo_ab_full)
         validacao, _pag, _fr, pp = rodar_full(ab, c["pti"])
     else:
-        validacao, _pag, _fr, pp = rodar(ab, c["pti"], frete=c["frete"])
+        validacao, _pag, _fr, pp = rodar(ab, c["pti"], frete=c["frete"], ajustar_cupom=c.get("ajustar_cupom", False))
     # IDs sempre como texto: EXTERNAL_REFERENCE tem 16 digitos e o Excel so guarda
     # 15 -- gravado como numero, o ultimo digito vira 0 (MOVEIS/ELETRO 11.09.2026).
     for col in ("SOURCE_ID", "EXTERNAL_REFERENCE"):

@@ -18,8 +18,8 @@ import sys
 from datetime import datetime
 
 _AQUI = os.path.dirname(__file__)
-sys.path.insert(0, os.path.join(_AQUI, "FULL"))
-sys.path.insert(0, os.path.join(_AQUI, "MOVEIS"))
+sys.path.insert(0, os.path.join(_AQUI, "..", "..", "PARA_PROCESSAR", "FULL"))
+sys.path.insert(0, os.path.join(_AQUI, "..", "..", "PARA_PROCESSAR", "MOVEIS"))
 
 import pandas as pd
 from rodar_full import rodar, CAMINHO_AB_PADRAO, CAMINHO_PTI_PADRAO

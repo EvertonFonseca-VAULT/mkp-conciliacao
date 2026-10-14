@@ -820,9 +820,8 @@ def carregar_dias(canal_nome, datas, ab_forcado=None):
     """Um DataFrame por dia (AB + Para Processar), ja conferido; aborta se faltar numero ou se a soma
     diferir do calendario."""
     cfg = CANAIS[canal_nome]
-    for sub in ("FULL", "ES", "MOVEIS", "RB"):
-        sys.path.insert(0, os.path.join(_AQUI, sub))
-    sys.path.insert(0, _AQUI)
+    for sub in ("PARA_PROCESSAR/FULL", "PARA_PROCESSAR/ES", "COMUM", "KONCILI"):
+        sys.path.insert(0, os.path.join(_AQUI, "..", sub))
     from koncili import CANAIS_KONCILI, caminho_destino
 
     if canal_nome not in CANAIS_KONCILI:

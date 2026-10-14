@@ -24,6 +24,8 @@ import sys
 import openpyxl
 import pandas as pd
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "COMUM"))
+
 from agregador import agregar_por_pedido
 from calendario_alvo import buscar_alvo
 from canais import CAMINHO_RB_PADRAO, CANAIS, resolver_para_processar, validar_data_rb
@@ -82,10 +84,22 @@ def _ordenar_fila_verificar(resultado):
     maior pro menor, negativos do mais negativo pro mais perto de zero.
     Ex.: 1000, 500, -1500, -300. Substitui a ordenacao por abs() (que
     misturava sinal e nao servia mais pra esse fluxo). Pedido do Everton,
-    17/09/2026."""
-    verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
-    positivos = verificar[verificar["DIF"] >= 0].sort_values("DIF", ascending=False)
-    negativos = verificar[verificar["DIF"] < 0].sort_values("DIF", ascending=True)
+    17/09/2026.
+
+    Tambem entra aqui todo pedido REBATE com DIF != 0 (sem trocar o STATUS
+    dele, que fica REBATE -- continua gerando a linha de Estorno/Venda no
+    Rebate CMM normalmente, ver rebate_processar.py). REBATE (reivindicacao
+    de cupom via CMM) e DIF (gap contra o banco no repasse do dia) sao fatos
+    independentes -- um nao explica o outro, entao o DIF de um pedido REBATE
+    precisa de ajuste manual que nem qualquer outro, so que hoje ficava
+    escondido (STATUS REBATE nunca caia na fila). Achado real WEB
+    01.10.2026: 3 pedidos com cupom estornado (REBATE negativo) E um DIF de
+    banco sem relacao (135,11 + 31,41 + 11,30 = R$ 177,82) que nunca
+    apareciam em lugar nenhum pra lancar -- o card "Calculado" do dashboard
+    ficava sempre R$ 177,82 abaixo do alvo. Pedido do Everton, 13/10/2026."""
+    candidatos = _candidatos_verificar(resultado)
+    positivos = candidatos[candidatos["DIF"] >= 0].sort_values("DIF", ascending=False)
+    negativos = candidatos[candidatos["DIF"] < 0].sort_values("DIF", ascending=True)
     return pd.concat([positivos, negativos])
 
 
@@ -101,6 +115,19 @@ def _caminho_rebate_processar(pasta_processar_rebate, data_ref, rebate_processar
     return os.path.join(pasta_processar_rebate, f"PROCESSAR_REBATE_{data_ref.replace('/', '.')}.xlsx")
 
 
+def _candidatos_verificar(resultado):
+    """Pedidos que precisam de olhar manual (scraper ML/MP + fila do
+    dashboard): STATUS==VERIFICAR, OU REBATE com DIF != 0. REBATE (cupom/CMM)
+    e DIF (gap contra o banco no repasse do dia) sao fatos independentes --
+    um pedido pode ter cupom estornado certinho no CMM e AINDA ASSIM ter um
+    gap de banco sem nenhuma relacao com o cupom, que precisa de pesquisa no
+    ML/MP que nem qualquer outro VERIFICAR (ver docstring de
+    _ordenar_fila_verificar). STATUS continua REBATE pra esses -- so entram
+    aqui pra efeito de pesquisa/fila, sem perder o lancamento de Estorno no
+    Rebate CMM. Pedido do Everton, 13/10/2026."""
+    return resultado[(resultado["STATUS"] == "VERIFICAR") | ((resultado["STATUS"] == "REBATE") & (resultado["DIF"] != 0))]
+
+
 def processar(canal, data, pasta_saida=".", usar_scraper=False):
     """Roda o ciclo inteiro (agregar/cruzar/enriquecer/rebate) e salva os
     xlsx. Usado tanto pelo `main()` (CLI) quanto pelo interativo.py
@@ -113,7 +140,7 @@ def processar(canal, data, pasta_saida=".", usar_scraper=False):
     validar_data_rb(data, data_ref)
 
     resultado, rb, para_processar = rodar(caminho_pp, caminho_rb)
-    verificar = resultado[resultado["STATUS"] == "VERIFICAR"]
+    verificar = _candidatos_verificar(resultado)
 
     sufixo = f"{canal.lower()}_{data.replace('.', '')}"
     # "Descricoes", nao "Conciliacoes" -- desde 15/09/2026 o
@@ -322,6 +349,21 @@ def _testar_ordenar_fila_verificar():
     })
     fila = _ordenar_fila_verificar(resultado)
     assert list(fila["DIF"]) == [1000.0, 500.0, -1500.0, -300.0], list(fila["DIF"])
+
+    # REBATE com DIF != 0 entra na fila (cupom estornado nao explica o gap
+    # de banco, ver docstring) -- REBATE com DIF == 0 (caso normal, banco ja
+    # bateu certo) continua fora, senao duplicava pedido que nao precisa de
+    # ajuste nenhum. STATUS nao muda (verificado fora desta funcao, ver
+    # _ordenar_fila_verificar -- ela so filtra/ordena, nunca escreve
+    # STATUS).
+    resultado2 = pd.DataFrame({
+        "PEDIDO_MKP": ["f", "g", "h"],
+        "STATUS": ["REBATE", "REBATE", "SEM DIFF"],
+        "DIF": [135.11, 0.0, 50.0],
+    })
+    fila2 = _ordenar_fila_verificar(resultado2)
+    assert list(fila2["PEDIDO_MKP"]) == ["f"], list(fila2["PEDIDO_MKP"])
+    assert "STATUS" not in fila2.columns or (fila2["STATUS"] == "REBATE").all()
 
 
 def _testar_caminho_rebate_processar():

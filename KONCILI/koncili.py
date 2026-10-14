@@ -2,8 +2,12 @@
 Livre, le o RESULTADO, baixa o AB original e confere com o calendario.
 
 Conferencia (validada em 19/09/2026, todos os canais abaixo): soma de
-GROSS + MP_FEE + FINANCING_FEE + SHIPPING_FEE do AB (colunas J:M do export de
-60 colunas) == RESULTADO do Koncili == VALOR_EB do calendario.
+GROSS + MP_FEE + FINANCING_FEE + SHIPPING_FEE + EFFECTIVE_COUPON do AB (colunas
+J:M + EFFECTIVE_COUPON_AMOUNT do export de 60 colunas) == RESULTADO do Koncili
+== VALOR_EB do calendario. EFFECTIVE_COUPON_AMOUNT entrou em 13/10/2026: sem
+ela, PRIME e WEB (lojas com cupom proprio) ficavam DIFERE -- o valor do cupom
+(negativo) e exatamente a diferenca (confirmado em PRIME 01,02,05,06.10 e
+WEB 01,02.10).
 
 Precisa do Python do venv do Screaper Mercado (tem playwright) e das
 variaveis de ambiente KONCILI_USUARIO / KONCILI_SENHA (nunca no codigo):
@@ -24,7 +28,7 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "RB"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "COMUM"))
 
 import pandas as pd
 from datetime import datetime
@@ -33,7 +37,7 @@ from calendario_alvo import buscar_alvo_loja
 URL = "https://components.koncili.com"
 API = "https://api.koncili.com"
 PASTA_AB = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\MKP - MERCADO\AB"
-COLUNAS_REPASSE = ["GROSS_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT"]
+COLUNAS_REPASSE = ["GROSS_AMOUNT", "MP_FEE_AMOUNT", "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT", "EFFECTIVE_COUPON_AMOUNT"]
 
 # Layouts de 35 colunas (em ingles) que o X: usa em CENTER e WEB: selecao/ordem
 # das 60 do export do Koncili. WEB tem REFUND_ID, que o Koncili nao exporta
@@ -177,7 +181,13 @@ def caminho_destino(canal, data):
 def _ajustar_layout(caminho, c):
     """Deixa o export do Koncili no layout do X:: renomeia a aba e, se o canal
     tem `colunas`, mantem so essas (nessa ordem; ausente = coluna vazia).
-    Copia os valores como vieram (tipos e IDs intactos), sem passar por pandas."""
+    Copia os valores como vieram (tipos e IDs intactos), sem passar por pandas.
+
+    O export do WEB/CENTER vem com 2 abas (achado 13/10/2026, WEB 07.10.2026:
+    aba "7" com os dados certos + aba "8", sobra do dia seguinte bundlada no
+    mesmo arquivo) -- sem remover a sobra, ela fica na posicao 0 depois que a
+    aba original e removida, e soma_ab/leitura posterior (sheet_name=0) le a
+    aba errada. Por isso remove TODAS as outras abas, nao so `ws`."""
     import openpyxl
 
     wb = openpyxl.load_workbook(caminho)
@@ -190,9 +200,14 @@ def _ajustar_layout(caminho, c):
         novo.append(c["colunas"])
         for lin in linhas:
             novo.append([None if p is None else lin[p] for p in pos])
-        wb.remove(ws)
+        for extra in wb.sheetnames:
+            if extra != c["aba"]:
+                wb.remove(wb[extra])
     else:
         ws.title = c["aba"]
+        for extra in list(wb.sheetnames):
+            if extra != c["aba"]:
+                wb.remove(wb[extra])
     wb.save(caminho)
 
 
@@ -280,20 +295,26 @@ def _teste():
 
     t = os.path.join(tempfile.gettempdir(), "koncili_layout.xlsx")
     wb = openpyxl.Workbook()
+    wb.active.title = "7"
     wb.active.append(["ZZ", "SOURCE_ID", "GROSS_AMOUNT"] + [c for c in COLUNAS_WEB if c not in ("SOURCE_ID", "GROSS_AMOUNT")][:0])
     wb.active.append(["x", 123, 9.5])
+    wb.create_sheet("8").append(["lixo do dia seguinte, bundlado no mesmo export"])  # ver docstring de _ajustar_layout
     wb.save(t)
     _ajustar_layout(t, CANAIS_KONCILI["WEB"])
-    ws = openpyxl.load_workbook(t).active
+    wb2 = openpyxl.load_workbook(t)
+    assert wb2.sheetnames == ["Planilha1"], "aba extra do dia seguinte nao foi removida"
+    ws = wb2.active
     assert ws.title == "Planilha1" and [c.value for c in ws[1]] == COLUNAS_WEB and len(COLUNAS_WEB) == 35
     assert ws.cell(2, 2).value == 123 and ws.cell(2, 8).value == 9.5 and ws.cell(2, 33).value is None  # REFUND_ID vazio
+    assert soma_ab(t) == 9.5  # sheet_name=0 tem que ler a Planilha1, nao a aba extra
     os.remove(t)
     assert len(COLUNAS_CENTER) == 35
     assert caminho_destino("MOVEIS", "11.09.2026").endswith(r"MOVEIS\2026\09.2026\MERCADO MOVEIS 11.09.2026.xlsx")
     tmp = os.path.join(tempfile.gettempdir(), "koncili_teste.xlsx")
     pd.DataFrame({"GROSS_AMOUNT": [100.0, 50.0], "MP_FEE_AMOUNT": [-10.0, -5.0], "FINANCING_FEE_AMOUNT": [-2.0, 0.0],
-                  "SHIPPING_FEE_AMOUNT": [-8.0, -1.0], "COUPON_AMOUNT": [3.0, 3.0]}).to_excel(tmp, index=False)
-    assert abs(soma_ab(tmp) - 124.0) < 0.001, "cupom nao entra na soma"
+                  "SHIPPING_FEE_AMOUNT": [-8.0, -1.0], "COUPON_AMOUNT": [3.0, 3.0],
+                  "EFFECTIVE_COUPON_AMOUNT": [-1.0, -1.0]}).to_excel(tmp, index=False)
+    assert abs(soma_ab(tmp) - 122.0) < 0.001, "COUPON_AMOUNT bruto entrou na soma, ou EFFECTIVE_COUPON_AMOUNT nao entrou"
     os.remove(tmp)
     print("koncili.py: ok")
 

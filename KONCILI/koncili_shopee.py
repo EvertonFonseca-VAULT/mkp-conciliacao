@@ -34,8 +34,6 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "RB"))
-
 import pandas as pd
 
 from koncili import API, baixar_ab, cabecalhos_api, ler_credenciais, login

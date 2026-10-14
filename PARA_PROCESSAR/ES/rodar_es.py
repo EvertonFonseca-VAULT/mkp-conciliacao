@@ -47,10 +47,22 @@ def caminhos_do_dia(data):
     return caminho_ab, CAMINHO_PTI_PADRAO, saida
 
 
-def rodar(caminho_ab, caminho_pti, frete=True):
+def rodar(caminho_ab, caminho_pti, frete=True, ajustar_cupom=False):
     """`caminho_pti=None` (ELETRO): so o cruzamento TOTVS/SRI, sem PTI/frete --
     devolve (None, None, None, para_processar). `frete=False` (MOVEIS): roda a
-    Validacao/Pagamento mas nao lanca Frete."""
+    Validacao/Pagamento mas nao lanca Frete. `ajustar_cupom=True` (WEB, ver
+    CANAIS_PP["WEB"] em rodar_canal.py): cruza os pedidos do Para Processar
+    final de volta com o AB original (por EXTERNAL_REFERENCE resolvido no
+    TOTVS) e soma o EFFECTIVE_COUPON_AMOUNT do pedido na linha de
+    COUPON_AMOUNT (coluna M) -- uma vez por pedido, na primeira linha que
+    aparecer com essa referencia.
+
+    ⚠️ Testado em 13/10/2026 (WEB 01.10.2026): aplicar o ajuste ANTES da
+    classificacao (direto no AB, em COUPON_AMOUNT) nao muda o H:M (o cupom
+    se cancela dentro de `_recalcular`, MOVEIS/modelo_ab.py) e so piora a
+    classificacao (Verificar de 6 pra 59 de 128). Por isso o ajuste e feito
+    DEPOIS, direto na linha final do Para Processar -- ai sim o H:M cai
+    exatamente o valor do cupom."""
     ab = carregar_ab(caminho_ab)
     validos = filtrar_validos(marcar_flags(ab))
 
@@ -71,7 +83,27 @@ def rodar(caminho_ab, caminho_pti, frete=True):
     pagamento = montar_pagamento(validacao, ab_pp)
     frete = montar_frete(validacao, ab_pp) if frete else montar_frete(validacao, ab_pp, pedidos=[])
     processar = montar_para_processar(validacao, pagamento, frete, ab_pp)
+    if ajustar_cupom:
+        processar = _somar_cupom_efetivo(processar, cruzado)
     return validacao, pagamento, frete, processar
+
+
+def _somar_cupom_efetivo(processar, cruzado):
+    """Cruza o Para Processar de volta com o AB original (chave =
+    EXTERNAL_REFERENCE do Para Processar == totvs_encontrado do AB cruzado)
+    e soma o EFFECTIVE_COUPON_AMOUNT do pedido em COUPON_AMOUNT (coluna M) --
+    uma vez por pedido, na primeira linha que aparecer com essa referencia
+    (pedido pode ter linha de Pagamento + Frete + Ajuste, cupom entra uma
+    vez so)."""
+    processar = processar.copy()
+    cupom_por_pedido = cruzado.groupby("totvs_encontrado")["EFFECTIVE_COUPON_AMOUNT"].sum()
+    cupom_por_pedido = cupom_por_pedido[cupom_por_pedido != 0]
+    primeira_linha = processar.reset_index().groupby("EXTERNAL_REFERENCE")["index"].first()
+    for pedido, valor in cupom_por_pedido.items():
+        idx = primeira_linha.get(pedido)
+        if idx is not None:
+            processar.loc[idx, "COUPON_AMOUNT"] += valor
+    return processar
 
 
 def main():
@@ -97,5 +129,24 @@ def main():
     print(f"Salvo em: {os.path.abspath(saida)}")
 
 
+def _teste():
+    """Offline: _somar_cupom_efetivo isolado (sem AB/TOTVS/PTI reais)."""
+    processar = pd.DataFrame({
+        "EXTERNAL_REFERENCE": ["P1", "P1", "P2", "P3"],  # P1: Pagamento + Frete
+        "COUPON_AMOUNT": [10.0, 0.0, 5.0, 2.0],
+    })
+    cruzado = pd.DataFrame({
+        "totvs_encontrado": ["P1", "P1", "P2", "P9"],  # P1 em 2 linhas do AB, P9 nao existe no Para Processar
+        "EFFECTIVE_COUPON_AMOUNT": [-1.0, -2.0, 0.0, -99.0],
+    })
+    ajustado = _somar_cupom_efetivo(processar, cruzado)
+    # P1: cupom do AB = -1-2=-3, entra 1x so na 1a linha (10 -> 7); P2: cupom 0, nao muda; P3: sem match, nao muda.
+    assert ajustado["COUPON_AMOUNT"].tolist() == [7.0, 0.0, 5.0, 2.0]
+    print("rodar_es.py: ok")
+
+
 if __name__ == "__main__":
-    main()
+    if "--teste" in sys.argv:
+        _teste()
+    else:
+        main()
