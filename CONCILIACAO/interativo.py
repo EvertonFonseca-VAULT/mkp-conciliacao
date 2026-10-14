@@ -18,7 +18,7 @@ import sys
 import webbrowser
 
 from canais import CAMINHO_RB_PADRAO, CANAIS, CANAIS_SEM_RAIZ_CONFIRMADA
-from dashboard import gerar_dashboard
+from dashboard import gerar_dashboard, href_relativo
 from rodar_conciliacao_rb import processar
 
 # NAO importar scraper_ml aqui em cima -- ele importa playwright no topo do
@@ -109,7 +109,7 @@ def gerar_bat_scraper(canal, data, pasta_saida):
     )
     with open(caminho_bat, "w", encoding="cp1252") as f:
         f.write(conteudo)
-    return nome_bat
+    return caminho_bat
 
 
 def gerar_bat_atualizar(canal, data, pasta_saida):
@@ -130,7 +130,7 @@ def gerar_bat_atualizar(canal, data, pasta_saida):
     )
     with open(caminho_bat, "w", encoding="cp1252") as f:
         f.write(conteudo)
-    return nome_bat
+    return caminho_bat
 
 
 def gerar_bat_arquivar(canal, data, pasta_saida):
@@ -154,7 +154,7 @@ def gerar_bat_arquivar(canal, data, pasta_saida):
     )
     with open(caminho_bat, "w", encoding="cp1252") as f:
         f.write(conteudo)
-    return nome_bat
+    return caminho_bat
 
 
 def gerar_bat_rebate_fora_da_regra(canal, data, pasta_saida, pasta_destino):
@@ -241,31 +241,25 @@ def executar(canal, data, pasta_saida, usar_scraper):
     caminho_html = gerar_dashboard(
         r["resultado"], r["fila_verificar"], r["rebate_cmm"],
         canal=canal, data=data, data_ref_rb=r["data_ref"],
-        caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
-        caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
+        # Cada caminho_* vira href relativo ao dashboard (pasta_conciliacoes)
+        # na hora: a conta "../"/"REBATE/" nao e mais feita aqui, um por um
+        # e as vezes errada (ex.: caminho_xlsx_rebate nunca levava "../" mas
+        # mora em Rebate_CMM/, pasta irma de Conciliacoes/ -- link quebrado
+        # achado nesta revisao de arquitetura, card 4; corrigido de gracas
+        # ao trocar pra href_relativo). Ver href_relativo em dashboard.py.
+        caminho_xlsx_completo=href_relativo(pasta_conciliacoes, r["caminho_xlsx"]),
+        caminho_xlsx_rebate=href_relativo(pasta_conciliacoes, r["caminho_rebate_xlsx"]),
         pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
-        # Os .bat ficam na RAIZ (pasta_saida), 1 nivel acima do dashboard.html
-        # (Conciliacoes/) -- ver gerar_bat_scraper/gerar_bat_atualizar.
-        caminho_bat_scraper=f"../{caminho_bat_scraper}" if caminho_bat_scraper else None,
+        caminho_bat_scraper=href_relativo(pasta_conciliacoes, caminho_bat_scraper),
         raiz=raiz_confirmada,
-        # Descricoes agora e pasta irma de Conciliacoes (onde o dashboard.html
-        # fica) -- basename sozinho quebraria o link, precisa subir 1 nivel.
-        caminho_xlsx_descricoes=(
-            f"../Descricoes/{os.path.basename(r['caminho_descricoes_xlsx'])}"
-            if r["caminho_descricoes_xlsx"] else None
-        ),
+        caminho_xlsx_descricoes=href_relativo(pasta_conciliacoes, r["caminho_descricoes_xlsx"]),
         conferencia_rbx=r["conferencia_rbx"],
         valores_pedidos=r["valores_pedidos"],
-        caminho_bat_atualizar=f"../{caminho_bat_atualizar}",
-        caminho_bat_arquivar=f"../{caminho_bat_arquivar}" if caminho_bat_arquivar else None,
+        caminho_bat_atualizar=href_relativo(pasta_conciliacoes, caminho_bat_atualizar),
+        caminho_bat_arquivar=href_relativo(pasta_conciliacoes, caminho_bat_arquivar),
         ml_de_cache=r["ml_de_cache"], responsavel=r["responsavel"],
         rebate_processar=r["rebate_processar"],
-        # REBATE e subpasta de Conciliacoes (onde o dashboard.html ja fica),
-        # nao irma dela -- sem "../" (diferente de Descricoes, que e irma).
-        caminho_xlsx_rebate_processar=(
-            f"REBATE/{os.path.basename(r['caminho_rebate_processar_xlsx'])}"
-            if r["caminho_rebate_processar_xlsx"] else None
-        ),
+        caminho_xlsx_rebate_processar=href_relativo(pasta_conciliacoes, r["caminho_rebate_processar_xlsx"]),
         para_processar=r["para_processar"],
         lotes_status=_lotes_status(canal),
     )
@@ -376,32 +370,25 @@ def main():
                 bateu_calendario = "SIM" if alvo and abs(total_rb - alvo) < 0.01 else ("NAO" if alvo else "SEM ALVO")
                 print(f"RESUMO|{canal}|{data}|H:M={hm:,.2f}|VERIFICAR={verificar_qtd}|CALENDARIO={bateu_calendario}")
                 # Gera dashboard (mesma logica de executar mas sem abrir navegador repetidamente)
-                from dashboard import gerar_dashboard
                 from canais import CANAIS_SEM_RAIZ_CONFIRMADA
                 pasta_conciliacoes = os.path.join(args.saida_pasta, "Conciliacoes")
                 raiz_confirmada = r["raiz"] if canal not in CANAIS_SEM_RAIZ_CONFIRMADA else None
                 gerar_dashboard(
                     r["resultado"], r["fila_verificar"], r["rebate_cmm"],
                     canal=canal, data=data, data_ref_rb=r["data_ref"],
-                    caminho_xlsx_completo=os.path.basename(r["caminho_xlsx"]),
-                    caminho_xlsx_rebate=os.path.basename(r["caminho_rebate_xlsx"]),
+                    caminho_xlsx_completo=href_relativo(pasta_conciliacoes, r["caminho_xlsx"]),
+                    caminho_xlsx_rebate=href_relativo(pasta_conciliacoes, r["caminho_rebate_xlsx"]),
                     pasta_saida=pasta_conciliacoes, alvo=r["alvo"], ml_atualizado=r["ml_atualizado"],
                     caminho_bat_scraper=None,
                     raiz=raiz_confirmada,
-                    caminho_xlsx_descricoes=(
-                        f"../Descricoes/{os.path.basename(r['caminho_descricoes_xlsx'])}"
-                        if r["caminho_descricoes_xlsx"] else None
-                    ),
+                    caminho_xlsx_descricoes=href_relativo(pasta_conciliacoes, r["caminho_descricoes_xlsx"]),
                     conferencia_rbx=r["conferencia_rbx"],
                     valores_pedidos=r["valores_pedidos"],
                     caminho_bat_atualizar=None,
                     caminho_bat_arquivar=None,
                     ml_de_cache=r["ml_de_cache"], responsavel=r["responsavel"],
                     rebate_processar=r["rebate_processar"],
-                    caminho_xlsx_rebate_processar=(
-                        f"REBATE/{os.path.basename(r['caminho_rebate_processar_xlsx'])}"
-                        if r["caminho_rebate_processar_xlsx"] else None
-                    ),
+                    caminho_xlsx_rebate_processar=href_relativo(pasta_conciliacoes, r["caminho_rebate_processar_xlsx"]),
                     para_processar=r["para_processar"],
                     lotes_status=_lotes_status(canal),
                 )
@@ -446,9 +433,13 @@ def _testar_bats():
     import tempfile
 
     with tempfile.TemporaryDirectory() as pasta_saida:
-        nome_scraper = gerar_bat_scraper("FULL", "01.09", pasta_saida)
-        nome_atualizar = gerar_bat_atualizar("FULL", "01.09", pasta_saida)
-        nome_arquivar = gerar_bat_arquivar("FULL", "01.09", pasta_saida)
+        # gerar_bat_scraper/atualizar/arquivar devolvem o caminho ABSOLUTO
+        # (nao so o nome) desde a revisao de arquitetura (card 4) -- e o que
+        # href_relativo() em dashboard.py espera pra montar o link do
+        # dashboard sem conta de "../" na mao no call site.
+        caminho_scraper = gerar_bat_scraper("FULL", "01.09", pasta_saida)
+        caminho_atualizar = gerar_bat_atualizar("FULL", "01.09", pasta_saida)
+        caminho_arquivar = gerar_bat_arquivar("FULL", "01.09", pasta_saida)
         # pasta_destino (Conciliacoes/REBATE/) de proposito NAO criada
         # antes -- dia sintetico sem nenhum rebate, REBATE so e criada
         # por rodar_conciliacao_rb.py quando tem rebate de verdade. O bat
@@ -457,22 +448,23 @@ def _testar_bats():
         assert not os.path.exists(pasta_rebate)
         nome_fora_da_regra = gerar_bat_rebate_fora_da_regra("FULL", "01.09", pasta_saida, pasta_rebate)
         assert "WEB" in CANAIS, "WEB nao cadastrado em CANAIS"
-        assert nome_scraper == "rodar_scraper_full_0109.bat", nome_scraper
-        assert nome_atualizar == "atualizar_full_0109.bat", nome_atualizar
-        assert nome_arquivar == "arquivar_rbx_full_0109.bat", nome_arquivar
+        assert os.path.basename(caminho_scraper) == "rodar_scraper_full_0109.bat", caminho_scraper
+        assert os.path.basename(caminho_atualizar) == "atualizar_full_0109.bat", caminho_atualizar
+        assert os.path.basename(caminho_arquivar) == "arquivar_rbx_full_0109.bat", caminho_arquivar
         assert nome_fora_da_regra == "rebate_fora_da_regra_full_0109.bat", nome_fora_da_regra
-        assert os.path.exists(os.path.join(pasta_saida, nome_scraper))
-        assert os.path.exists(os.path.join(pasta_saida, nome_atualizar))
-        assert os.path.exists(os.path.join(pasta_saida, nome_arquivar))
+        assert os.path.dirname(caminho_scraper) == pasta_saida, caminho_scraper
+        assert os.path.exists(caminho_scraper)
+        assert os.path.exists(caminho_atualizar)
+        assert os.path.exists(caminho_arquivar)
         # excecao explicita: esse bat fica em Conciliacoes/REBATE/, nao na
         # RAIZ como os outros 3 -- pedido do Everton (arrastar sem trocar
         # de pasta, mesmo lugar do PROCESSAR_REBATE_<data>.xlsx).
         assert not os.path.exists(os.path.join(pasta_saida, nome_fora_da_regra))
         assert os.path.exists(os.path.join(pasta_rebate, nome_fora_da_regra))
         # nao pode ter ido pra dentro de nenhuma subpasta
-        assert not os.path.exists(os.path.join(pasta_saida, "Conciliacoes", nome_scraper))
+        assert not os.path.exists(os.path.join(pasta_saida, "Conciliacoes", os.path.basename(caminho_scraper)))
         # o bat reinvoca com --arquivar-rbx, sem rodar o resto do pipeline
-        conteudo_arquivar = open(os.path.join(pasta_saida, nome_arquivar), encoding="cp1252").read()
+        conteudo_arquivar = open(caminho_arquivar, encoding="cp1252").read()
         assert "--arquivar-rbx" in conteudo_arquivar, conteudo_arquivar
         # arrastar-e-soltar: sem arquivo, avisa e sai (exit /b 1) sem travar
         # no resto do .bat; com arquivo, %~1 vira o caminho pro flag; e o

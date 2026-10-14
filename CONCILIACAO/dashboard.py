@@ -1288,6 +1288,17 @@ def _preencher(template, valores):
     return template
 
 
+def href_relativo(pasta_dashboard, caminho_absoluto):
+    """Caminho relativo (barras normais, pra usar em href/data-bat) de um
+    arquivo em disco visto a partir de onde o dashboard_<data>.html fica --
+    usar em vez de montar "../"/"REBATE/" na mao no call site (ver revisao
+    de arquitetura, card 4: a conta so pode fechar de um jeito e quem sabe
+    fazer e este modulo, que e quem decide pasta_dashboard)."""
+    if not caminho_absoluto:
+        return None
+    return os.path.relpath(caminho_absoluto, pasta_dashboard).replace("\\", "/")
+
+
 def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_ref_rb,
                      caminho_xlsx_completo, caminho_xlsx_rebate, pasta_saida, alvo=None,
                      ml_atualizado=False, caminho_bat_scraper=None, raiz=None,
