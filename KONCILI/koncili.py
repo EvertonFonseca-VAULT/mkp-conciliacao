@@ -29,12 +29,10 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "COMUM"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "CONCILIACAO"))
 
 import pandas as pd
 from datetime import datetime
-from calendario_alvo import buscar_alvo_loja
-from canais import CANAIS as _CANAIS_CANONICOS
+from calendario_alvo import buscar_alvo_loja, LOJA_POR_CANAL
 
 URL = "https://components.koncili.com"
 API = "https://api.koncili.com"
@@ -78,12 +76,13 @@ CANAIS_KONCILI = {
     "COLETAS_CO05": {"conta": "LTWE20240219130512", "pasta": "COLETAS CO05", "prefixo": "MERCADO COLETAS CO05", "subpasta": ""},
 }
 
-# chave aqui -> chave em canais.py (CONCILIACAO), so onde o nome diverge.
+# chave aqui -> chave de LOJA_POR_CANAL (COMUM/calendario_alvo.py), so onde
+# o nome diverge.
 _ALIAS_CANAL_CANONICO = {"COLETAS_CO05": "CO05"}
 
 def _loja_canonica(canal):
     canonico = _ALIAS_CANAL_CANONICO.get(canal, canal)
-    return _CANAIS_CANONICOS.get(canonico, {}).get("loja_calendario")
+    return LOJA_POR_CANAL.get(canonico)
 
 for _canal, _cfg in CANAIS_KONCILI.items():
     _cfg["loja"] = _loja_canonica(_canal)

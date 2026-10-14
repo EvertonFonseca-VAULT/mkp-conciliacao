@@ -1,9 +1,13 @@
 """Busca o ALVO do dia (VALOR_EB) na planilha de calendario de planejamento
 de baixas -- X:\\...\\MKP\\CALENDARIO\\CALENDARIO_<ano>\\Calendario_Planejamento
 Baixas_<ano>.xlsx, aba "Visao_<MES>_<ano>". O calendario ja tem o valor
-esperado por LOJA/DATA lancado com antecedencia; o nome da LOJA vem de
-CANAIS[canal]["loja_calendario"] em canais.py (fonte unica dessa config
-por canal).
+esperado por LOJA/DATA lancado com antecedencia; o nome da LOJA por Canal
+e LOJA_POR_CANAL (abaixo) -- fonte unica desse fato (ver CONTEXT.md,
+Canal). canais.py (CONCILIACAO) e koncili.py (KONCILI) leem daqui; nao
+duplicar o valor em outro lugar (ver revisao de arquitetura, card 2: antes
+era o inverso -- esse modulo, dito "compartilhado", importava de volta
+CONCILIACAO/canais.py, um ciclo mediado so por sys.path. COMUM nao pode
+depender de uma frente especifica, senao deixa de ser comum).
 
 Usado pra validar que RB + REBATE + AJUSTE (fila VERIFICAR) fecha com o
 alvo do dia -- pedido do Everton, ver dashboard.py.
@@ -11,15 +15,25 @@ alvo do dia -- pedido do Everton, ver dashboard.py.
 
 import glob
 import os
-import sys
 import unicodedata
 
 import openpyxl
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "CONCILIACAO"))
-from canais import CANAIS
-
 PASTA_CALENDARIO = r"X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\MKP\CALENDÁRIO"
+
+# Mesmas chaves de CANAIS em CONCILIACAO/canais.py. CO05: conferido direto
+# na planilha real (Visao_OUTUBRO_2026, MARKETPLACE=MERCADO), 14/10/2026 --
+# "COLETAS CO05" nunca bateu com nenhuma linha (ver canais.py).
+LOJA_POR_CANAL = {
+    "FULL": "FULL",
+    "ES": "COLETAS ES",
+    "PRIME": "PRIME",
+    "WEB": "WEB",
+    "MOVEIS": "MOVEIS",
+    "ELETRO": "ELETRO",
+    "CENTER": "CENTER",
+    "CO05": "COLETAS 05",
+}
 
 MESES = [
     "JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO",
@@ -55,7 +69,7 @@ def buscar_alvo(canal, data_ref):
     Retorna o VALOR_EB do calendario pro canal/dia, ou None se nao achar
     planilha, aba ou linha (mes ainda nao cadastrado, canal fora do
     calendario etc -- nao e erro, so significa "sem alvo pra comparar")."""
-    return buscar_alvo_loja(CANAIS.get(canal, {}).get("loja_calendario"), data_ref)
+    return buscar_alvo_loja(LOJA_POR_CANAL.get(canal), data_ref)
 
 
 def buscar_alvo_loja(loja, data_ref):

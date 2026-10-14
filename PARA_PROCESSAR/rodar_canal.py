@@ -47,9 +47,10 @@ RODAR_TOTVS = r"C:\RODAR TOTVS"
 
 # ab_sub: subpasta do AB (ES: "antigo" = layout de 60 colunas); ano_no_nome:
 # a saida de MOVEIS leva o ano no nome (dd.mm.aaaa), as outras so dd.mm.
-# So fatos de localizacao do AB/Para Processar desse front -- identidade do
-# canal (loja do calendario, vendedor, raiz TOTVS) mora em CONCILIACAO/canais.py
-# (FONTE UNICA); nao duplicar aqui (ver revisao de arquitetura de 14/10/2026).
+# So fatos de localizacao do AB/Para Processar desse front -- vendedor/raiz
+# TOTVS moram em CONCILIACAO/canais.py (FONTE UNICA), loja do calendario mora
+# em COMUM/calendario_alvo.LOJA_POR_CANAL; nao duplicar aqui (ver revisao de
+# arquitetura de 14/10/2026).
 CANAIS_PP = {
     "FULL": dict(ab_pasta="FULL", ab_prefixo="MERCADO FULL", ab_sub="", pti=r"C:\TEMP\PTI FULL*.csv", frete=True,
                  saida=os.path.join(RODAR_TOTVS, "PROCESSAR", "MERCADO LIVRE", "FULL"), saida_prefixo="PROCESSAR_MERCADO FULL", ano_no_nome=True),

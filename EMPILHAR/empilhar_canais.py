@@ -744,9 +744,10 @@ _COLUNAS_TEXTO_PRIME = {"B", "C", "D", "E", "F", "P", "Q", "R", "T", "U", "V", "
                          "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AJ", "AK"}
 assert len(_COLUNAS_PRIME) == 40
 
-# So fatos de layout de Excel/saida desse front -- identidade do canal (loja
-# do calendario, vendedor, raiz TOTVS) mora em CONCILIACAO/canais.py (FONTE
-# UNICA); nao duplicar aqui (ver revisao de arquitetura de 14/10/2026).
+# So fatos de layout de Excel/saida desse front -- vendedor/raiz TOTVS moram
+# em CONCILIACAO/canais.py (FONTE UNICA), loja do calendario mora em
+# COMUM/calendario_alvo.LOJA_POR_CANAL; nao duplicar aqui (ver revisao de
+# arquitetura de 14/10/2026).
 CANAIS = {
     "CENTER": dict(
         script_sufixo="center", arquivo="CENTER_MERCADO.xlsx", aba="Base",
@@ -839,10 +840,11 @@ def carregar_dias(canal_nome, datas, ab_forcado=None):
 
     if canal_nome not in CANAIS_KONCILI:
         sys.exit("registre o canal %s em koncili.CANAIS_KONCILI (loja + caminho do AB) antes de rodar" % canal_nome)
-    try:
-        from calendario_alvo import buscar_alvo_loja
-    except ImportError:
-        buscar_alvo_loja = lambda loja, dia: None
+    # calendario_alvo.py (COMUM) e um modulo-folha de verdade desde a revisao
+    # de arquitetura (card 2): nao depende mais de CONCILIACAO, so stdlib +
+    # openpyxl (ja e dependencia obrigatoria do pipeline) -- sem motivo real
+    # pro import falhar, nao precisa mais de fallback silencioso.
+    from calendario_alvo import buscar_alvo_loja
 
     valor_col = cfg["valor_col"]
     dias, erros = [], []

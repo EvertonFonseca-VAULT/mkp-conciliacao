@@ -1,17 +1,27 @@
-"""Config por canal -- FONTE UNICA de tudo que varia por canal (raiz do
-historico TOTVS, onde fica o "Para Processar" do dia, chave de busca no RB
-transitorio/original, nome da loja no calendario de planejamento). Antes
-cada um desses vivia num dict separado (canais.py/conferir_rbx.py/
+"""Config por canal especifica de CONCILIACAO (raiz do historico TOTVS, onde
+fica o "Para Processar" do dia, chave de busca no RB transitorio/original).
+Antes cada um desses vivia num dict separado (canais.py/conferir_rbx.py/
 calendario_alvo.py) e podia divergir sem ninguem notar -- foi assim que
 varias das inconsistencias de rotulo desta sessao passaram batido.
 Consolidado aqui em 16/09/2026, pedido do Everton (organizacional, nao
 mudou nenhum valor).
+
+Nome da loja no calendario de planejamento (loja_calendario) NAO mora aqui
+-- e fato comum a KONCILI/EMPILHAR/CONCILIACAO, dono e
+COMUM/calendario_alvo.LOJA_POR_CANAL (ver revisao de arquitetura, card 2).
+CANAIS[canal]["loja_calendario"] continua existindo (lido de la logo
+abaixo), so pra nao quebrar quem ja consome CANAIS direto.
 
 O RB e sempre o mesmo arquivo (exportado do TOTVS pra todos os canais) --
 por isso nao entra na config por canal.
 """
 
 import glob
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "COMUM"))
+from calendario_alvo import LOJA_POR_CANAL
 
 CAMINHO_RB_PADRAO = r"C:\TEMP\Conciliador - Backup\CONCILIADOR_RB.xlsx"
 
@@ -21,11 +31,11 @@ CANAIS = {
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\FULL",
         "prefixo": "PROCESSAR_MERCADO FULL",
         "chave_rbx": "FU",  # confirmada com dado real 2x (01/09 e 02/09)
-        "loja_calendario": "FULL",
         # loja_cmm: campo LOJA da linha de Rebate colada no CMM
         # (Movimento_Bancario) -- confirmado com dado real do FULL,
-        # coincide com loja_calendario mas e um campo diferente (ver ES,
-        # onde "COLETAS ES" != "CO"). Pedido do Everton, 18/09/2026.
+        # coincide com loja_calendario (ver LOJA_POR_CANAL em COMUM/
+        # calendario_alvo.py) mas e um campo diferente (ver ES, onde
+        # "COLETAS ES" != "CO"). Pedido do Everton, 18/09/2026.
         "loja_cmm": "FULL",
         # prefixo_mov: usado no HISTORICO das naturezas Frete/Comissao/Rebate
         # (dashboard.py) -- confirmado com dado real do CMM_MELI_FULL
@@ -52,15 +62,11 @@ CANAIS = {
         "raiz": "MKP_MELI_CO_ES",
         "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES",
         "prefixo": "PROCESSAR_MERCADO COLETAS ES",
-        # loja_calendario: chute pelo nome do canal (sem dado real do
-        # calendario de planejamento pra confirmar) -- se estiver errado
-        # buscar_alvo() so retorna None (sem alvo pra comparar), nao quebra
-        # nada nem gera numero errado (ver calendario_alvo.py:56-58).
-        "loja_calendario": "COLETAS ES",
-        # loja_cmm: campo LOJA da linha de Rebate colada no CMM (diferente
-        # de loja_calendario -- ver comentario em FULL) -- confirmado com
-        # dado real do ES (linha CMM real, 18/09/2026): "...MKP MELI CO
-        # RECEBIMENTO DE REBATE...", ORIGEM=MKP/PAGADOR=MELI/LOJA=CO.
+        # loja_cmm: campo LOJA da linha de Rebate colada no CMM (diferente de
+        # loja_calendario, LOJA_POR_CANAL em COMUM/calendario_alvo.py -- ver
+        # comentario em FULL) -- confirmado com dado real do ES (linha CMM
+        # real, 18/09/2026): "...MKP MELI CO RECEBIMENTO DE REBATE...",
+        # ORIGEM=MKP/PAGADOR=MELI/LOJA=CO.
         "loja_cmm": "CO",
         "chave_cupom_rebate": "MKP_MELI_CO_ES_REBATE",
         # vendedor: usado pro filtro de RA (CHAVE_RA) E pro campo VENDEDOR
@@ -107,7 +113,6 @@ CANAIS = {
         # pedido "REC MKP WEBCO PRIME REF PARC N" (sem MELI) -- confirmado no
         # rbx.xlsx real, 24/09/2026 (tudo vendedor 657; nao colide com MKP_B2W_PRIME).
         "chave_rbx": ("MKP_MELI_PRIME", "WEBCO PRIME REF PARC"),
-        "loja_calendario": "PRIME",
         # loja_cmm e vendedor confirmados com linha CMM real (24/09/2026):
         # MKP/MELI/PRIME, TARIFA DE COBRANCA, vendedor 657, X103925.
         "loja_cmm": "PRIME",
@@ -125,7 +130,6 @@ CANAIS = {
         # / ..._COMISSAO / ..._FRETE), entao o dashboard pode montar o painel
         # corretamente sem esconder a raiz.
         "chave_rbx": ("MERCADO WEB", "MKP_MELI_WE"),
-        "loja_calendario": "WEB",
         "loja_cmm": "WEB",
         "chave_cupom_rebate": "MKP CUPOM MELI WEB REPASSE",
         "vendedor": "578",
@@ -142,7 +146,6 @@ CANAIS = {
         # chave_rbx: a confirmar com dado real do RBX do MOVEIS.
         # Segue padrao MKP_MELI_MO_* igual FULL/WEB/PRIME.
         "chave_rbx": ("MKP_MELI_MO",),
-        "loja_calendario": "MOVEIS",
         "loja_cmm": "MOVEIS",
         "chave_cupom_rebate": "MKP CUPOM MELI MOVEIS REPASSE",
         "vendedor": "945",  # a confirmar -- rodar_canal nao cita vendedor do MOVEIS
@@ -155,7 +158,6 @@ CANAIS = {
         # ELETRO so TOTVS/SRI (sem PTI), sem frete -- ver rodar_canal.py.
         # chave_rbx: a confirmar com dado real.
         "chave_rbx": ("MKP_MELI_ED",),
-        "loja_calendario": "ELETRO",
         "loja_cmm": "ELETRODOMESTICO",
         "chave_cupom_rebate": "MKP CUPOM MELI ELETRO REPASSE",
         "vendedor": "946",  # a confirmar
@@ -167,7 +169,6 @@ CANAIS = {
         "prefixo": "PROCESSAR_MERCADO CENTER",
         # CENTER: TOTVS/SRI + PTI, SEM frete, vendedor 944 (rodar_canal.py).
         "chave_rbx": ("MKP_MELI_CE","MKP MERCADO CENTER"),
-        "loja_calendario": "CENTER",
         "loja_cmm": "CENTER",
         "chave_cupom_rebate": "MKP CUPOM MELI CENTER REPASSE",
         "vendedor": "944",
@@ -181,19 +182,16 @@ CANAIS = {
         # do ES (so ordem diferente). chave_rbx: a confirmar -- pode colidir
         # com ES (MKP_MELI_CO_*), ver comentario do ES sobre "MKP_MELI_CO_".
         "chave_rbx": ("MKP_MELI_CO_05", "MKP_MELI_CO REF PARC"),
-        # loja_calendario: era "COLETAS CO05" (chute, nunca batia com nenhuma
-        # linha do calendario real -- buscar_alvo so retornava None). Corrigido
-        # pra "COLETAS 05" em 14/10/2026, conferido direto na planilha real
-        # (Calendario_Planejamento Baixas_2026.xlsx, aba Visao_OUTUBRO_2026,
-        # LOJA de MARKETPLACE=MERCADO): e o mesmo valor que koncili.py sempre
-        # usou (CANAIS_KONCILI["COLETAS_CO05"]["loja"]).
-        "loja_calendario": "COLETAS 05",
         "loja_cmm": "CO05",
         "chave_cupom_rebate": "MKP CUPOM MELI CO05 REPASSE",
         "vendedor": "847",
         "prefixo_mov": "MKP_MELI_CO_05",
     },
 }
+
+for _canal, _cfg in CANAIS.items():
+    _cfg["loja_calendario"] = LOJA_POR_CANAL.get(_canal)
+del _canal, _cfg
 
 # MOVEIS/ELETRO/CENTER/CO05/PRIME/WEB: adicionados em 29/09/2026 (ponytail
 # review) -- so FULL e ES tem raiz confirmada com dado real. Os demais
