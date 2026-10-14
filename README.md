@@ -87,7 +87,9 @@ cd ../CONCILIACAO && python interativo.py FULL 22.09
 cd ../CONCILIACAO && python interativo.py FULL --data-inicio 22.09 --data-fim 30.09
 ```
 
-Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/rodar_canal.py --teste`, `python EMPILHAR/empilhar_canais.py --teste` (roda os 8 canais), `python CONCILIACAO/dashboard.py`.
+Variáveis de ambiente para o Koncili: `KONCILI_USUARIO` e `KONCILI_SENHA`. Para o fallback SRI
+(`resolver_pendentes_via_sri`, usa `Screaper Mercado/Pagina.py`): `SRI_USUARIO` e `SRI_SENHA`.
+Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/rodar_canal.py --teste`, `python EMPILHAR/empilhar_canais.py --teste` (roda os 8 canais), `python CONCILIACAO/dashboard.py`.
 
 ## Conciliação e dashboard (`CONCILIACAO`)
 

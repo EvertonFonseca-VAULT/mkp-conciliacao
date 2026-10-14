@@ -126,13 +126,14 @@ def resolver_pendentes_via_sri(pendentes):
     import sys
     if CAMINHO_SCRAPER_SRI not in sys.path:
         sys.path.insert(0, CAMINHO_SCRAPER_SRI)
-    from Pagina import login, buscar_e_validar, USUARIO, SENHA
+    from Pagina import login, buscar_e_validar, ler_credenciais
     import requests
 
     unicos = pendentes[["EXTERNAL_REFERENCE", "SHIPPING_ID"]].drop_duplicates()
 
+    usuario, senha = ler_credenciais()
     session = requests.Session()
-    login(session, USUARIO, SENHA)
+    login(session, usuario, senha)
 
     resolvido = {}
     for external_ref, shipping_id in unicos.itertuples(index=False):
