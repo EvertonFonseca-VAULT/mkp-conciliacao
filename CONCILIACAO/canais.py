@@ -181,7 +181,13 @@ CANAIS = {
         # do ES (so ordem diferente). chave_rbx: a confirmar -- pode colidir
         # com ES (MKP_MELI_CO_*), ver comentario do ES sobre "MKP_MELI_CO_".
         "chave_rbx": ("MKP_MELI_CO_05", "MKP_MELI_CO REF PARC"),
-        "loja_calendario": "COLETAS CO05",
+        # loja_calendario: era "COLETAS CO05" (chute, nunca batia com nenhuma
+        # linha do calendario real -- buscar_alvo so retornava None). Corrigido
+        # pra "COLETAS 05" em 14/10/2026, conferido direto na planilha real
+        # (Calendario_Planejamento Baixas_2026.xlsx, aba Visao_OUTUBRO_2026,
+        # LOJA de MARKETPLACE=MERCADO): e o mesmo valor que koncili.py sempre
+        # usou (CANAIS_KONCILI["COLETAS_CO05"]["loja"]).
+        "loja_calendario": "COLETAS 05",
         "loja_cmm": "CO05",
         "chave_cupom_rebate": "MKP CUPOM MELI CO05 REPASSE",
         "vendedor": "847",

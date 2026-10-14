@@ -89,13 +89,6 @@ for _canal, _cfg in CANAIS_KONCILI.items():
     _cfg["loja"] = _loja_canonica(_canal)
 del _canal, _cfg
 
-# COLETAS_CO05: loja_calendario de canais.py e "COLETAS CO05", mas o valor usado
-# aqui sempre foi "COLETAS 05" -- divergencia real, achada na revisao de
-# arquitetura de 14/10/2026 (nao sei qual bate com o LOJA real do calendario).
-# Mantido o valor atual pra nao mudar comportamento; perguntar pro Everton qual
-# esta certo antes de unificar de verdade esse canal.
-CANAIS_KONCILI["COLETAS_CO05"]["loja"] = "COLETAS 05"
-
 
 def _para_iso(data):
     """DD.MM.AAAA -> AAAA-MM-DD (valida a data)."""
