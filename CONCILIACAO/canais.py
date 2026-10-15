@@ -28,7 +28,7 @@ CAMINHO_RB_PADRAO = r"C:\TEMP\Conciliador - Backup\CONCILIADOR_RB.xlsx"
 CANAIS = {
     "FULL": {
         "raiz": "MKP_MELI_FU",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\FULL",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\FULL",
         "prefixo": "PROCESSAR_MERCADO FULL",
         "chave_rbx": "FU",  # confirmada com dado real 2x (01/09 e 02/09)
         # loja_cmm: campo LOJA da linha de Rebate colada no CMM
@@ -60,7 +60,7 @@ CANAIS = {
     },
     "ES": {
         "raiz": "MKP_MELI_CO_ES",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS ES",
         "prefixo": "PROCESSAR_MERCADO COLETAS ES",
         # loja_cmm: campo LOJA da linha de Rebate colada no CMM (diferente de
         # loja_calendario, LOJA_POR_CANAL em COMUM/calendario_alvo.py -- ver
@@ -107,7 +107,7 @@ CANAIS = {
     # Everton, 24/09/2026. Vendedor e loja do calendario = rodar_canal/koncili.
     "PRIME": {
         "raiz": "MKP_MELI_PRIME",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\PRIME",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\PRIME",
         "prefixo": "PROCESSAR_MERCADO PRIME",
         # 2 raizes, igual ao ES: agregado/manual "MKP_MELI_PRIME_..." e pedido a
         # pedido "REC MKP WEBCO PRIME REF PARC N" (sem MELI) -- confirmado no
@@ -122,7 +122,7 @@ CANAIS = {
     },
     "WEB": {
         "raiz": "MKP_MELI_WE",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\WEB",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\WEB",
         "prefixo": "PROCESSAR_MERCADO WEB",
         # Confirmacao em campo: vendedor 578, sem frete, layout/AB iguais aos
         # manuais do canal WEB. A raiz e a nomenclatura dos historicos do TOTVS
@@ -141,7 +141,7 @@ CANAIS = {
     # recente -- Everton, 29/09/2026.
     "MOVEIS": {
         "raiz": "MKP_MELI_MO",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MOVEIS",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\MOVEIS",
         "prefixo": "PROCESSAR_MERCADO MOVEIS",
         # chave_rbx: a confirmar com dado real do RBX do MOVEIS.
         # Segue padrao MKP_MELI_MO_* igual FULL/WEB/PRIME.
@@ -153,7 +153,7 @@ CANAIS = {
     },
     "ELETRO": {
         "raiz": "MKP_MELI_ED",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\ELETRO",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\ELETRO",
         "prefixo": "PROCESSAR_MERCADO ELETRODOMESTICO",
         # ELETRO so TOTVS/SRI (sem PTI), sem frete -- ver rodar_canal.py.
         # chave_rbx: a confirmar com dado real.
@@ -165,7 +165,7 @@ CANAIS = {
     },
     "CENTER": {
         "raiz": "MKP_MELI_CE",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\CENTER",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\CENTER",
         "prefixo": "PROCESSAR_MERCADO CENTER",
         # CENTER: TOTVS/SRI + PTI, SEM frete, vendedor 944 (rodar_canal.py).
         "chave_rbx": ("MKP_MELI_CE","MKP MERCADO CENTER"),
@@ -176,7 +176,7 @@ CANAIS = {
     },
     "CO05": {
         "raiz": "MKP_MELI_CO_05",
-        "pasta": r"C:\RODAR TOTVS\PROCESSAR\COLETAS CO05",
+        "pasta": r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS CO05",
         "prefixo": "PROCESSAR_MERCADO COLETAS CO05",
         # CO05: TOTVS/SRI + PTI + frete, vendedor 847, mesmo layout 60 colunas
         # do ES (so ordem diferente). chave_rbx: a confirmar -- pode colidir

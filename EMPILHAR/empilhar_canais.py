@@ -751,7 +751,7 @@ assert len(_COLUNAS_PRIME) == 40
 CANAIS = {
     "CENTER": dict(
         script_sufixo="center", arquivo="CENTER_MERCADO.xlsx", aba="Base",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\CENTER", sufixo="CENTER_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\CENTER", sufixo="CENTER_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Center"),
@@ -761,7 +761,7 @@ CANAIS = {
     # os demais; INSTALLMENTS (O) gravado como texto.
     "COLETAS_CO05": dict(
         script_sufixo="coletas05", arquivo="COLETAS_CO05_MERCADO_2025.xlsx", aba="Base",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\COLETAS CO05", sufixo="COLETAS_CO05_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS CO05", sufixo="COLETAS_CO05_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Coletas 05"),
@@ -772,7 +772,7 @@ CANAIS = {
     # gravado como texto.
     "MOVEIS": dict(
         script_sufixo="moveis", arquivo="MOVEIS_MERCADO.xlsx", aba="EMPILHADO",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MOVEIS", sufixo="MÓVEIS_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\MOVEIS", sufixo="MÓVEIS_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_moveis(caminho, ",000-03:00"),
@@ -782,7 +782,7 @@ CANAIS = {
     # le a aba do dia informado. --ab=CAMINHO forca outro arquivo (aba = mesmo dia).
     "PRIME": dict(
         script_sufixo="prime", arquivo="PRIME_MERCADO.xlsx", aba="Fatura",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\PRIME", sufixo="PRIME_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\PRIME", sufixo="PRIME_MERCADO",
         letras=_LETRAS_PRIME, ultima_letra=_L_CHAVE_PRIME, colunas=_COLUNAS_PRIME, colunas_texto=_COLUNAS_TEXTO_PRIME,
         grupo="prime", n_dados=_N_DADOS_PRIME, l_valor=_L_VALOR_PRIME, l_seq=_L_SEQ_PRIME, l_chave=_L_CHAVE_PRIME,
         valor_col="VALOR LÍQUIDO", letra_valor=_L_VALOR_PRIME, aviso_formula="a soma das colunas da formula difere do VALOR (credito - debito)",
@@ -792,7 +792,7 @@ CANAIS = {
     ),
     "WEB": dict(
         script_sufixo="web", arquivo="WEB_MERCADO.xlsx", aba="WEB",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\WEB", sufixo="WEB_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\WEB", sufixo="WEB_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFPQRSTUV"),
         grupo="web", valor_col="VALOR", letra_valor="W", aviso_formula="SUM(I:K) difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_simples(caminho, "Web"),
@@ -800,7 +800,7 @@ CANAIS = {
     ),
     "FULL": dict(
         script_sufixo="full", arquivo="FULL MERCADO_2024.xlsx", aba="Base",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\FULL", sufixo="FULL_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\FULL", sufixo="FULL_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=_carregar_ab_full,
@@ -808,7 +808,7 @@ CANAIS = {
     ),
     "ES": dict(
         script_sufixo="es", arquivo="COLETAS_ES_MERCADO_2024.xlsx", aba="Base",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\COLETAS ES", sufixo="COLETAS_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS ES", sufixo="COLETAS_MERCADO",
         letras=_LETRAS_25, ultima_letra="Z", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=_carregar_ab_es,
@@ -818,7 +818,7 @@ CANAIS = {
     # -- ver _carregar_ab_moveis (mesma funcao do MOVEIS).
     "ELETRO": dict(
         script_sufixo="eletro", arquivo="ELETRODOMESTICO_MERCADO.xlsx", aba="EMPILHADO",
-        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\ELETRO", sufixo="ELETRODOMÉSTICOS_MERCADO",
+        pasta_processar=r"C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\ELETRO", sufixo="ELETRODOMÉSTICOS_MERCADO",
         letras=_LETRAS_25, ultima_letra="Y", colunas=_COLUNAS_25, colunas_texto=set("BCDEFOPQRSTUV"),
         grupo="padrao", valor_col="VALOR", letra_valor="W", aviso_formula="a formula da coluna W difere do VALOR (credito - debito)",
         carregar_ab=lambda caminho: _carregar_ab_moveis(caminho, ",000-03:00"),

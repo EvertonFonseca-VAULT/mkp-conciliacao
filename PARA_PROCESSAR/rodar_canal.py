@@ -82,10 +82,16 @@ CANAIS_PP = {
 }
 
 
-def caminhos(canal, data):
-    """`data` = DD.MM.AAAA -> (AB de entrada, nome do arquivo de saida)."""
+def caminhos(canal, data, ab_forcado=None):
+    """`data` = DD.MM.AAAA -> (AB de entrada, nome do arquivo de saida).
+    ab_forcado: usa esse caminho de AB em vez do padrao do X: -- pra rodar
+    com um AB de teste (ex. "MERCADO WEB_teste dd.mm.aaaa.xlsx") sem
+    renomear/sobrescrever o AB real. Pedido do Everton, 14/10/2026."""
     c = CANAIS_PP[canal]
     dia, mes, ano = data.split(".")
+    if ab_forcado:
+        nome = f"{c['saida_prefixo']} {data if c['ano_no_nome'] else f'{dia}.{mes}'}.xlsx"
+        return ab_forcado, nome
     partes = [PASTA_AB, c["ab_pasta"], ano, f"{mes}.{ano}"] + ([c["ab_sub"]] if c["ab_sub"] else [])
     ab = os.path.join(*partes, f"{c['ab_prefixo']} {data}.xlsx")
     if c["ab_sub"] and not os.path.exists(ab):  # ES a partir de 10.2026: sem subpasta "antigo"
@@ -96,9 +102,9 @@ def caminhos(canal, data):
     return ab, nome
 
 
-def processar(canal, data, pasta_saida=None, forcar=False):
+def processar(canal, data, pasta_saida=None, forcar=False, ab_forcado=None):
     c = CANAIS_PP[canal]
-    ab, nome = caminhos(canal, data)
+    ab, nome = caminhos(canal, data, ab_forcado)
     destino = os.path.join(pasta_saida or c["saida"], nome)
     if os.path.exists(destino) and not forcar:
         print(f"  {canal} {data}: ja existe, nao sobrescrevi ({destino}) -- use --forcar")
@@ -124,14 +130,19 @@ def processar(canal, data, pasta_saida=None, forcar=False):
 def main(argv):
     forcar = "--forcar" in argv
     pasta = argv[argv.index("--saida") + 1] if "--saida" in argv else None
-    args = [a for i, a in enumerate(argv) if not a.startswith("--") and not (i and argv[i - 1] == "--saida")]
+    ab_forcado = argv[argv.index("--ab") + 1] if "--ab" in argv else None
+    opcoes_com_valor = {"--saida", "--ab"}
+    args = [a for i, a in enumerate(argv) if not a.startswith("--") and not (i and argv[i - 1] in opcoes_com_valor)]
     if len(args) < 2 or args[0].upper() not in [*CANAIS_PP, "TODOS"]:
-        sys.exit(f"uso: python rodar_canal.py <{'|'.join(CANAIS_PP)}|TODOS> DD.MM.AAAA [DD.MM.AAAA ...] [--saida PASTA] [--forcar]")
+        sys.exit(f"uso: python rodar_canal.py <{'|'.join(CANAIS_PP)}|TODOS> DD.MM.AAAA [DD.MM.AAAA ...] "
+                  "[--saida PASTA] [--forcar] [--ab CAMINHO_DO_AB]")
+    if ab_forcado and len(args) != 2:
+        sys.exit("--ab so funciona com 1 canal e 1 data (nao faz sentido com TODOS ou varios dias)")
     canais = list(CANAIS_PP) if args[0].upper() == "TODOS" else [args[0].upper()]
     for data in args[1:]:
         for canal in canais:
             try:
-                processar(canal, data, pasta, forcar)
+                processar(canal, data, pasta, forcar, ab_forcado)
             except FileNotFoundError as e:  # AB do canal ainda nao esta no X: -- segue com os outros
                 print(f"  {canal} {data}: sem AB ({e.filename or e})")
 
@@ -149,6 +160,8 @@ def _teste():
     assert ab.endswith(r"CENTER\2026\09.2026\MERCADO CENTER 22.09.2026.xlsx") and nome == "PROCESSAR_MERCADO CENTER 22.09.2026.xlsx"
     ab, nome = caminhos("CO05", "18.09.2026")
     assert ab.endswith(r"COLETAS CO05\2026\09.2026\MERCADO COLETAS CO05 18.09.2026.xlsx") and nome == "PROCESSAR_MERCADO COLETAS CO05 18.09.xlsx"
+    ab, nome = caminhos("WEB", "02.10.2026", ab_forcado=r"X:\caminho\MERCADO WEB_teste 02.10.2026.xlsx")
+    assert ab == r"X:\caminho\MERCADO WEB_teste 02.10.2026.xlsx" and nome == "PROCESSAR_MERCADO WEB 02.10.2026.xlsx"
     print("rodar_canal.py: ok")
 
 
