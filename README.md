@@ -51,6 +51,7 @@ MARKETPLACE/
 │   ├── empilhar_repasses.py  # implementação + CLI do repasse fechado (ver ADR-0001)
 │   └── empilhar_barra_cred.py / empilhar_kabum.py  # canais novos
 ├── CONCILIACAO/               # conciliação com o RB, classificação e dashboard
+├── Screaper Mercado/          # scraper Playwright (SRI/ML), roda a partir da pasta-irmã Projetos/Screaper Mercado/
 └── DOCS/
     ├── ADR/                    # decisões de arquitetura (ex.: ADR-0001)
     └── AGENTS/                 # domínio e issue tracker, pra agentes/CLAUDE.md
@@ -58,7 +59,7 @@ MARKETPLACE/
 
 Layouts do AB bruto: FULL 40 colunas · ES/CO05 60 · CENTER/WEB 35 · MOVEIS/ELETRO 43 ou 48 (português).
 
-`Screaper Mercado/` (scraper Playwright/SRI/ML) e `EXTRATO CALENDARIO/` (sem relação com este projeto) ficam fora, como pastas-irmãs de `MARKETPLACE/` em `Projetos/`.
+`Screaper Mercado/` (scraper Playwright/SRI/ML, código também aqui no repo) roda a partir da pasta-irmã `Projetos/Screaper Mercado/` (próprio venv com playwright); `EXTRATO CALENDARIO/` (sem relação com este projeto) fica fora.
 
 ## Uso diário
 
