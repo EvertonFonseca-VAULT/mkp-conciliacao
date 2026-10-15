@@ -1,4 +1,12 @@
-mssql-python
-azure-identity
 pandas
+numpy
 openpyxl
+requests
+playwright
+beautifulsoup4
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0
+keyring>=24.0.0
+pytest>=7.0.0
+pytest-qt>=4.4.0
+pyinstaller
