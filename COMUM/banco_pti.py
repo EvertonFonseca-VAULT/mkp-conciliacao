@@ -7,24 +7,23 @@ importacao e um retrato completo e SUBSTITUI o anterior daquele canal+vendedor
 vendedores (750/751) em arquivos separados; a substituicao e por vendedor, pra
 importar um nao apagar o outro.
 
-Conexao SEM pyodbc e SEM driver ODBC: python-tds (Python puro, fala TDS direto)
-+ azure-identity (login Microsoft interativo no navegador; o token fica em cache
-na maquina). Variavel de ambiente FABRIC_CONN com Server=host,porta e
-Database=nome (a mesma string do ODBC serve; Driver/Authentication sao
-ignorados). A string NAO vai no codigo nem no git. COMUM nao depende de nenhuma
+Conexao: fabric-connector/fabric_connector.py (mssql-python, driver ODBC
+embutido -- sem pyodbc e sem instalar ODBC Driver; Authentication=
+ActiveDirectoryIntegrated, SSO da conta Windows, sem popup). A string pode
+ser trocada por maquina na variavel FABRIC_CONN_STR. COMUM nao depende de nenhuma
 frente: recebe o DataFrame ja lido (PARA_PROCESSAR carregar_pti).
 """
 
 import hashlib
 import os
 import sqlite3
+import sys
 from datetime import datetime
 
 import pandas as pd
 
-ENV_CONN = "FABRIC_CONN"
+ENV_CONN = "FABRIC_CONN_STR"
 ENV_SQLITE = "PTI_SQLITE"  # caminho de um .db local: teste/offline
-ESCOPO_SQL = "https://database.windows.net/.default"
 
 # Colunas do PTI (cabecalho do export TOTVS) -> nome SQL. Ordem = a do arquivo.
 COLUNAS = {
@@ -51,67 +50,28 @@ def _sqlite(conn):
 
 
 def _marcador(conn):
-    """sqlite3 usa '?', python-tds usa '%s'."""
-    return "?" if _sqlite(conn) else "%s"
-
-
-_LINHAS_POR_INSERT = 60  # x 34 colunas = 2040 < 2100 parametros do SQL Server
-
-
-def _parse_conn(cadeia):
-    """'Server=h,1433;Database={db};...' -> (host, porta, banco)."""
-    partes = {}
-    for trecho in cadeia.split(";"):
-        if "=" in trecho:
-            k, v = trecho.split("=", 1)
-            partes[k.strip().lower()] = v.strip().strip("{}")
-    try:
-        host, _, porta = partes["server"].removeprefix("tcp:").partition(",")
-        return host, int(porta or 1433), partes["database"]
-    except KeyError as e:
-        raise RuntimeError(f"{ENV_CONN} sem Server= ou Database=.") from e
-
-
-def _token_fabric():
-    """Login Microsoft interativo (abre o navegador; cache em disco quando
-    possivel, pra nao pedir a cada execucao)."""
-    from azure.identity import InteractiveBrowserCredential, TokenCachePersistenceOptions
-
-    try:
-        cred = InteractiveBrowserCredential(
-            cache_persistence_options=TokenCachePersistenceOptions(name="mkp_conciliacao")
-        )
-    except Exception:  # sem suporte a cache persistente nessa maquina
-        cred = InteractiveBrowserCredential()
-    return cred.get_token(ESCOPO_SQL).token
+    """sqlite3 e mssql-python usam o mesmo marcador (qmark)."""
+    return "?"
 
 
 def conectar():
-    """Abre a conexao conforme o ambiente. Erro claro se faltar configuracao."""
+    """Abre a conexao conforme o ambiente. Erro claro se faltar dependencia."""
     caminho = os.environ.get(ENV_SQLITE)
     if caminho:
         return sqlite3.connect(caminho)
-    cadeia = os.environ.get(ENV_CONN)
-    if not cadeia:
-        raise RuntimeError(
-            f"Defina a variavel de ambiente {ENV_CONN} com a connection string do Fabric "
-            f"(ou {ENV_SQLITE} com um .db local pra teste)."
-        )
-    host, porta, banco = _parse_conn(cadeia)
+    pasta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fabric-connector")
+    if pasta not in sys.path:
+        sys.path.insert(0, pasta)
     try:
-        import certifi
-        import pytds
+        from fabric_connector import get_connection
     except ImportError as e:
-        raise RuntimeError("Faltam dependencias: pip install python-tds azure-identity certifi") from e
+        raise RuntimeError("Falta o mssql-python (pip install mssql-python).") from e
     try:
-        return pytds.connect(
-            server=host, port=porta, database=banco,
-            access_token_callable=_token_fabric,
-            cafile=certifi.where(), validate_host=True,  # Fabric exige TLS
-            login_timeout=120, autocommit=False,
-        )
+        return get_connection()
     except Exception as e:
-        raise RuntimeError(f"Falha ao conectar no Fabric ({host}). Detalhe: {e}") from e
+        raise RuntimeError(
+            f"Falha ao conectar no Fabric. Confira VPN/login Windows e {ENV_CONN}. Detalhe: {e}"
+        ) from e
 
 
 def criar_tabelas(conn):
@@ -193,17 +153,9 @@ def importar_pti(conn, canal, pti, arquivo=None, usuario=None):
             [canal, carga_id, *[_valor(v) for v in reg]]
             for reg in pti.itertuples(index=False, name=None)
         ]
-        cols = ",".join(nomes)
-        if _sqlite(conn):
-            cur.executemany(f"INSERT INTO pti_linha ({cols}) VALUES ({','.join([ph] * len(nomes))})", linhas)
-        else:  # python-tds nao tem bulk: INSERT multi-linha em lotes
-            um = "(" + ",".join([ph] * len(nomes)) + ")"
-            for i in range(0, len(linhas), _LINHAS_POR_INSERT):
-                lote = linhas[i:i + _LINHAS_POR_INSERT]
-                cur.execute(
-                    f"INSERT INTO pti_linha ({cols}) VALUES {','.join([um] * len(lote))}",
-                    [v for reg in lote for v in reg],
-                )
+        cur.executemany(
+            f"INSERT INTO pti_linha ({','.join(nomes)}) VALUES ({','.join([ph] * len(nomes))})", linhas
+        )
         conn.commit()
     except Exception:
         conn.rollback()

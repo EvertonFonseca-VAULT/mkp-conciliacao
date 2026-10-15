@@ -201,6 +201,13 @@ Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/roda
 - Autoteste: `python dashboard.py` → `dashboard.py: ok`.
 - `prototype_gui_launcher.py` (+ `abrir_prototipo_gui.bat`, `cmm_writer.py`, `mov_writer.py`): **protótipo descartável**, não é código de produção. Launcher Tkinter que só chama funções já existentes em `interativo.py`/`rodar_conciliacao_rb.py`/`rebate_fora_da_regra.py`, no lugar do menu digitado — decide se o layout (canal + datas + ações em botão) resolve o fluxo do dia a dia antes de virar GUI de verdade.
 
+## Conector Fabric (`fabric-connector`)
+
+**`fabric-connector/fabric_connector.py`** — Conecta no SQL endpoint do Microsoft Fabric (workspace `Marketplace`) via `mssql-python` (driver ODBC embutido no pacote, sem instalar ODBC Driver 18 separado no sistema).
+- `get_connection()`: string de conexão em `FABRIC_CONN_STR` (env var) ou no fallback do código. `Authentication=ActiveDirectoryIntegrated` — usa a sessão Windows logada, sem popup de login (login interativo repetido só aparecia com `ActiveDirectoryInteractive`; trocado por isso em 15/10/2026).
+- A chave `Driver=` do connection string clássico de ODBC não é aceita aqui: `mssql-python` controla o driver internamente e recusa a string se ela vier.
+- `requirements.txt` próprio (`mssql-python`), separado do `requirements.txt` da raiz — não confundir os dois ao instalar.
+
 ## Cuidados conhecidos
 
 - VPN caída derruba o acesso ao X:.
@@ -249,3 +256,4 @@ Precisa de acesso à unidade `X:` (AB e empilhados) e ao TOTVS_2022 (cruzamento 
 - [ ] ELETRO 11/09: H:M 95.010,82 contra 94.393,55 do calendário (Δ 617,27) — conferir com o Koncili
 - [ ] Scraper: `MELIPAYMENTS-COLLECTIONATTEMPT…` retorna "não encontrado"
 - [ ] Banco central do PTI (hoje são CSVs em `C:\TEMP`)
+- [x] Conector Fabric via `mssql-python` sem ODBC separado — `fabric-connector/fabric_connector.py` (15/10/2026)
