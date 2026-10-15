@@ -19,14 +19,14 @@ Regra de validação em todos os canais: **H:M do Para Processar = RESULTADO do 
 
 | Canal | Conta no Koncili | Vendedor | PTI | Frete | Saída do Para Processar |
 |---|---|---|---|---|---|
-| FULL | ver `CANAIS_KONCILI` | 751 (PTI tem 750 + 751) | `C:\TEMP\PTI FULL*.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\FULL` |
-| ES | ver `CANAIS_KONCILI` | 763 | `C:\TEMP\PTI ES.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\COLETAS ES` |
-| MOVEIS | `WEBCO MÓVEIS` | 755 | `C:\TEMP\PTI MOVEIS.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MOVEIS` |
+| FULL | ver `CANAIS_KONCILI` | 751 (PTI tem 750 + 751) | `C:\TEMP\PTI FULL*.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\FULL` |
+| ES | ver `CANAIS_KONCILI` | 763 | `C:\TEMP\PTI ES.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS ES` |
+| MOVEIS | `WEBCO MÓVEIS` | 755 | `C:\TEMP\PTI MOVEIS.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\MOVEIS` |
 | ELETRO | `WEBCO ELETRO` | 756 | não usa | não | `C:\RODAR TOTVS\ELETRODOMESTICO` |
-| CENTER | `CONTINENTALCENTER` | 944 | `C:\TEMP\PTI CENTER.csv` | não | `C:\RODAR TOTVS\PROCESSAR\CENTER` |
-| COLETAS CO05 | `LTWE20240219130512` | 847 | `C:\TEMP\PTI COLETAS 05.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\COLETAS CO05` |
-| PRIME | `WEBCOPRIME` | 657 | `C:\TEMP\PTI_PRIME.csv` | não | `C:\RODAR TOTVS\PROCESSAR\PRIME` |
-| WEB | `WEB CONTINENTAL` | 578 | `C:\TEMP\PTI WEB.csv` | não | `C:\RODAR TOTVS\PROCESSAR\WEB` |
+| CENTER | `CONTINENTALCENTER` | 944 | `C:\TEMP\PTI CENTER.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\CENTER` |
+| COLETAS CO05 | `LTWE20240219130512` | 847 | `C:\TEMP\PTI COLETAS 05.csv` | sim | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\COLETAS CO05` |
+| PRIME | `WEBCOPRIME` | 657 | `C:\TEMP\PTI_PRIME.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\PRIME` |
+| WEB | `WEB CONTINENTAL` | 578 | `C:\TEMP\PTI WEB.csv` | não | `C:\RODAR TOTVS\PROCESSAR\MERCADO LIVRE\WEB` |
 
 Nos códigos de vendedor, o PTI usa `000` na frente (`000755`); CMM/MOV usam sem zeros.
 
@@ -73,6 +73,7 @@ cd ../PARA_PROCESSAR
 python rodar_canal.py FULL 22.09.2026                       # 1 canal, 1 dia único
 python rodar_canal.py TODOS 22.09.2026                      # todos os canais, 1 dia
 python rodar_canal.py FULL 11.09.2026 14.09.2026 18.09.2026 # 1 canal, vários dias — lista cada data (não é intervalo)
+python rodar_canal.py WEB 22.09.2026 --ab "X:\caminho\MERCADO WEB_teste 22.09.2026.xlsx" # roda com um AB de teste, sem tocar no AB real (só 1 canal + 1 dia)
 
 # 3. Empilhado (os 8 canais, mesmo padrão: sem TOTVS, cruza com o Para Processar do dia por SOURCE_ID)
 cd ../EMPILHAR
@@ -133,8 +134,8 @@ Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/roda
 
 **`PARA_PROCESSAR/rodar_canal.py`** — Comando único do Para Processar (FULL, ES, MOVEIS, ELETRO, CENTER ou TODOS).
 - `CANAIS_PP`: configuração por canal (pasta e prefixo do AB, PTI, frete, pasta e nome de saída, ano no nome). CENTER adicionado 22/09/2026 (vendedor 944, PTI `C:\TEMP\PTI CENTER.csv`, sem frete — mesmo molde do MOVEIS).
-- `caminhos(canal, data)`: devolve o AB de entrada e o nome do arquivo de saída.
-- `processar(canal, data, pasta_saida, forcar)`: FULL usa `rodar_full.rodar` (2 vendedores no PTI); os demais usam `rodar_es.rodar`. Grava a aba "Para Processar" e imprime linhas, H:M e quantos "Verificar". Não sobrescreve sem `--forcar`.
+- `caminhos(canal, data, ab_forcado=None)`: devolve o AB de entrada e o nome do arquivo de saída. `ab_forcado` (`--ab CAMINHO`, só com 1 canal + 1 dia) usa esse AB em vez do padrão do X:, pra rodar com um AB de teste sem renomear/sobrescrever o real.
+- `processar(canal, data, pasta_saida, forcar, ab_forcado)`: FULL usa `rodar_full.rodar` (2 vendedores no PTI); os demais usam `rodar_es.rodar`. Grava a aba "Para Processar" e imprime linhas, H:M e quantos "Verificar". Não sobrescreve sem `--forcar`.
 - `main(argv)`: se o AB de um canal não está no X:, avisa e segue com os outros.
 
 **`PARA_PROCESSAR/FULL/processar_full.py`** — Motor do cruzamento (tradução das macros do PB BASE.xlsm).
@@ -197,6 +198,7 @@ Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/roda
 - Scroll da fila VERIFICAR persiste em `localStorage` (22/09/2026): sobrevive ao reload automático do `visibilitychange`.
 - `localStorage`: `ajustados_<canal>_<data>` (+ `_aba`, `_natureza`, `_natureza_extra`, `_drawer`, `_scroll`) e `concfull:tema`.
 - Autoteste: `python dashboard.py` → `dashboard.py: ok`.
+- `prototype_gui_launcher.py` (+ `abrir_prototipo_gui.bat`, `cmm_writer.py`, `mov_writer.py`): **protótipo descartável**, não é código de produção. Launcher Tkinter que só chama funções já existentes em `interativo.py`/`rodar_conciliacao_rb.py`/`rebate_fora_da_regra.py`, no lugar do menu digitado — decide se o layout (canal + datas + ações em botão) resolve o fluxo do dia a dia antes de virar GUI de verdade.
 
 ## Cuidados conhecidos
 
