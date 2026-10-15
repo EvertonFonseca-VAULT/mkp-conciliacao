@@ -7,10 +7,12 @@ importacao e um retrato completo e SUBSTITUI o anterior daquele canal+vendedor
 vendedores (750/751) em arquivos separados; a substituicao e por vendedor, pra
 importar um nao apagar o outro.
 
-Conexao: variavel de ambiente FABRIC_CONN com a connection string ODBC
-(Driver 18 + Authentication=ActiveDirectoryInteractive; o proprio driver abre
-o login Microsoft). A string NAO vai no codigo nem no git. COMUM nao depende
-de nenhuma frente: recebe o DataFrame ja lido (PARA_PROCESSAR carregar_pti).
+Conexao SEM pyodbc e SEM driver ODBC: python-tds (Python puro, fala TDS direto)
++ azure-identity (login Microsoft interativo no navegador; o token fica em cache
+na maquina). Variavel de ambiente FABRIC_CONN com Server=host,porta e
+Database=nome (a mesma string do ODBC serve; Driver/Authentication sao
+ignorados). A string NAO vai no codigo nem no git. COMUM nao depende de nenhuma
+frente: recebe o DataFrame ja lido (PARA_PROCESSAR carregar_pti).
 """
 
 import hashlib
@@ -22,6 +24,7 @@ import pandas as pd
 
 ENV_CONN = "FABRIC_CONN"
 ENV_SQLITE = "PTI_SQLITE"  # caminho de um .db local: teste/offline
+ESCOPO_SQL = "https://database.windows.net/.default"
 
 # Colunas do PTI (cabecalho do export TOTVS) -> nome SQL. Ordem = a do arquivo.
 COLUNAS = {
@@ -47,6 +50,42 @@ def _sqlite(conn):
     return isinstance(conn, sqlite3.Connection)
 
 
+def _marcador(conn):
+    """sqlite3 usa '?', python-tds usa '%s'."""
+    return "?" if _sqlite(conn) else "%s"
+
+
+_LINHAS_POR_INSERT = 60  # x 34 colunas = 2040 < 2100 parametros do SQL Server
+
+
+def _parse_conn(cadeia):
+    """'Server=h,1433;Database={db};...' -> (host, porta, banco)."""
+    partes = {}
+    for trecho in cadeia.split(";"):
+        if "=" in trecho:
+            k, v = trecho.split("=", 1)
+            partes[k.strip().lower()] = v.strip().strip("{}")
+    try:
+        host, _, porta = partes["server"].removeprefix("tcp:").partition(",")
+        return host, int(porta or 1433), partes["database"]
+    except KeyError as e:
+        raise RuntimeError(f"{ENV_CONN} sem Server= ou Database=.") from e
+
+
+def _token_fabric():
+    """Login Microsoft interativo (abre o navegador; cache em disco quando
+    possivel, pra nao pedir a cada execucao)."""
+    from azure.identity import InteractiveBrowserCredential, TokenCachePersistenceOptions
+
+    try:
+        cred = InteractiveBrowserCredential(
+            cache_persistence_options=TokenCachePersistenceOptions(name="mkp_conciliacao")
+        )
+    except Exception:  # sem suporte a cache persistente nessa maquina
+        cred = InteractiveBrowserCredential()
+    return cred.get_token(ESCOPO_SQL).token
+
+
 def conectar():
     """Abre a conexao conforme o ambiente. Erro claro se faltar configuracao."""
     caminho = os.environ.get(ENV_SQLITE)
@@ -58,18 +97,21 @@ def conectar():
             f"Defina a variavel de ambiente {ENV_CONN} com a connection string do Fabric "
             f"(ou {ENV_SQLITE} com um .db local pra teste)."
         )
+    host, porta, banco = _parse_conn(cadeia)
     try:
-        import pyodbc
+        import certifi
+        import pytds
     except ImportError as e:
-        raise RuntimeError("pyodbc nao instalado (pip install pyodbc).") from e
+        raise RuntimeError("Faltam dependencias: pip install python-tds azure-identity certifi") from e
     try:
-        # timeout alto: o login interativo espera a pessoa no navegador
-        return pyodbc.connect(cadeia, timeout=120)
-    except pyodbc.Error as e:
-        raise RuntimeError(
-            "Falha ao conectar no Fabric. Confira se o 'ODBC Driver 18 for SQL Server' "
-            f"esta instalado e se {ENV_CONN} esta correta. Detalhe: {e}"
-        ) from e
+        return pytds.connect(
+            server=host, port=porta, database=banco,
+            access_token_callable=_token_fabric,
+            cafile=certifi.where(), validate_host=True,  # Fabric exige TLS
+            login_timeout=120, autocommit=False,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Falha ao conectar no Fabric ({host}). Detalhe: {e}") from e
 
 
 def criar_tabelas(conn):
@@ -124,7 +166,7 @@ def importar_pti(conn, canal, pti, arquivo=None, usuario=None):
     vendedores = sorted(pti["VENDEDOR"].dropna().astype(str).str.strip().unique())
     # hash do conteudo: detecta reimportacao do mesmo arquivo
     h = hashlib.sha256(pd.util.hash_pandas_object(pti.fillna(""), index=False).values.tobytes()).hexdigest()
-    ph = "?"  # pyodbc e sqlite3 usam o mesmo marcador
+    ph = _marcador(conn)
     cur = conn.cursor()
     try:
         # delete casa pelo valor cru gravado (pode ter espaco), nao pelo normalizado
@@ -151,11 +193,17 @@ def importar_pti(conn, canal, pti, arquivo=None, usuario=None):
             [canal, carga_id, *[_valor(v) for v in reg]]
             for reg in pti.itertuples(index=False, name=None)
         ]
-        if not _sqlite(conn):
-            cur.fast_executemany = True
-        cur.executemany(
-            f"INSERT INTO pti_linha ({','.join(nomes)}) VALUES ({','.join([ph] * len(nomes))})", linhas
-        )
+        cols = ",".join(nomes)
+        if _sqlite(conn):
+            cur.executemany(f"INSERT INTO pti_linha ({cols}) VALUES ({','.join([ph] * len(nomes))})", linhas)
+        else:  # python-tds nao tem bulk: INSERT multi-linha em lotes
+            um = "(" + ",".join([ph] * len(nomes)) + ")"
+            for i in range(0, len(linhas), _LINHAS_POR_INSERT):
+                lote = linhas[i:i + _LINHAS_POR_INSERT]
+                cur.execute(
+                    f"INSERT INTO pti_linha ({cols}) VALUES {','.join([um] * len(lote))}",
+                    [v for reg in lote for v in reg],
+                )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -169,7 +217,7 @@ def buscar_pti(conn, canal, pedidos=None):
     coluna originais, 3 colunas float, resto texto). `pedidos` (PED. MKP)
     restringe a consulta; None traz tudo do canal."""
     sql_cols = ",".join(COLUNAS.values())
-    ph = "?"
+    ph = _marcador(conn)
     if pedidos is None:
         lotes = [None]
     else:
@@ -200,7 +248,7 @@ def resumo_cargas(conn, canal=None):
     sql = "SELECT canal, vendedores, arquivo, importado_por, importado_em, n_linhas FROM pti_carga"
     params = []
     if canal:
-        sql += " WHERE canal = ?"
+        sql += f" WHERE canal = {_marcador(conn)}"
         params.append(canal)
     cur.execute(sql + " ORDER BY carga_id DESC", params)
     return cur.fetchall()

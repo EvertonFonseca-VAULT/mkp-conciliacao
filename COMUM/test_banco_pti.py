@@ -84,3 +84,45 @@ def test_conectar_sem_config_da_erro_claro(monkeypatch):
     monkeypatch.delenv(b.ENV_SQLITE, raising=False)
     with pytest.raises(RuntimeError, match=b.ENV_CONN):
         b.conectar()
+
+
+class _ConnTds:
+    """Imita o python-tds (marcador %s, sem executemany em lote) sobre SQLite,
+    pra exercitar o caminho de INSERT multi-linha usado no Fabric."""
+
+    def __init__(self):
+        self._c = sqlite3.connect(":memory:")
+
+    def cursor(self):
+        return _CurTds(self._c.cursor())
+
+    def commit(self):
+        self._c.commit()
+
+    def rollback(self):
+        self._c.rollback()
+
+
+class _CurTds:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=()):
+        assert len(params) <= 2100  # limite de parametros do SQL Server
+        sql = sql.replace("%s", "?").replace("CAST(SCOPE_IDENTITY() AS INT)", "last_insert_rowid()")
+        self._cur.execute(sql, params)
+
+    def __getattr__(self, nome):
+        return getattr(self._cur, nome)
+
+
+def test_caminho_tds_insere_em_lotes_respeitando_limite_de_parametros():
+    c = _ConnTds()
+    cur = c._c.cursor()
+    # DDL no SQLite real; so a importacao/busca passam pelo adaptador tds
+    b.criar_tabelas(c._c)
+    ped = [f"P{i}" for i in range(b._LINHAS_POR_INSERT * 3 + 7)]
+    res = b.importar_pti(c, "WEB", _pti(pedidos=ped))
+    assert res["linhas"] == len(ped)
+    assert len(b.buscar_pti(c, "WEB", ped)) == len(ped)
+    assert cur.execute("select count(*) from pti_linha").fetchone()[0] == len(ped)
