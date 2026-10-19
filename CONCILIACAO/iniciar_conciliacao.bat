@@ -48,16 +48,16 @@ goto MENU
 
 :DATA_UNICA
 set /p DATA="Digite a data (dd.mm): "
-cd /d "%USERPROFILE%\Desktop\Projetos\Mkp\AB\RB"
-"%USERPROFILE%\Desktop\Projetos\Mkp\.venv\Scripts\python.exe" interativo.py %CANAL% %DATA% > "%TEMP%\conciliacao_out.txt" 2>&1
+cd /d "%~dp0"
+"%~dp0..\.venv\Scripts\python.exe" interativo.py %CANAL% %DATA% > "%TEMP%\conciliacao_out.txt" 2>&1
 type "%TEMP%\conciliacao_out.txt"
 goto MOSTRAR_RESUMO_UNICO
 
 :INTERVALO
 set /p DATA_INI="Data inicial (dd.mm): "
 set /p DATA_FIM="Data final   (dd.mm): "
-cd /d "%USERPROFILE%\Desktop\Projetos\Mkp\AB\RB"
-"%USERPROFILE%\Desktop\Projetos\Mkp\.venv\Scripts\python.exe" interativo.py %CANAL% --data-inicio %DATA_INI% --data-fim %DATA_FIM% > "%TEMP%\conciliacao_out.txt" 2>&1
+cd /d "%~dp0"
+"%~dp0..\.venv\Scripts\python.exe" interativo.py %CANAL% --data-inicio %DATA_INI% --data-fim %DATA_FIM% > "%TEMP%\conciliacao_out.txt" 2>&1
 type "%TEMP%\conciliacao_out.txt"
 goto MOSTRAR_RESUMO_INTERVALO
 

@@ -10,7 +10,8 @@ ela, PRIME e WEB (lojas com cupom proprio) ficavam DIFERE -- o valor do cupom
 WEB 01,02.10).
 
 Precisa do Python do venv do Screaper Mercado (tem playwright) e das
-variaveis de ambiente KONCILI_USUARIO / KONCILI_SENHA (nunca no codigo):
+credenciais KONCILI_USUARIO / KONCILI_SENHA -- por variavel de ambiente ou
+gravadas no cofre do Windows (ver COMUM/cofre_senhas.py; ambas nunca no codigo):
     $env:KONCILI_USUARIO="email"; $env:KONCILI_SENHA="senha"
     python koncili.py ES 18.09.2026                    # so confere (AB vai pra pasta temp)
     python koncili.py ELETRO 11.09.2026 18.09.2026 --salvar   # grava no X: (nao sobrescreve)
@@ -99,10 +100,20 @@ def _de_iso(iso):
 
 
 def ler_credenciais():
+    """Credenciais do Koncili -- nunca no codigo. Prioridade: variavel de
+    ambiente (mesmo padrao do SRI em Screaper Mercado/Pagina.py), senao
+    Gerenciador de Credenciais do Windows (keyring, servico "MARKETPLACE_KONCILI").
+    Para gravar no cofre: COMUM/cofre_senhas.py (ou cofre_senhas.bat).
+        $env:KONCILI_USUARIO="email"; $env:KONCILI_SENHA="senha"
+    """
     usuario, senha = os.environ.get("KONCILI_USUARIO"), os.environ.get("KONCILI_SENHA")
+    if not usuario or not senha:
+        import keyring
+        usuario = usuario or keyring.get_password("MARKETPLACE_KONCILI", "usuario")
+        senha = senha or keyring.get_password("MARKETPLACE_KONCILI", "senha")
     faltando = [n for n, v in (("KONCILI_USUARIO", usuario), ("KONCILI_SENHA", senha)) if not v]
     if faltando:
-        sys.exit(f"ERRO: defina a(s) variavel(is) de ambiente: {', '.join(faltando)}")
+        sys.exit(f"ERRO: defina a(s) variavel(is) de ambiente ou grave no cofre (MARKETPLACE_KONCILI): {', '.join(faltando)}")
     return usuario, senha
 
 
@@ -330,6 +341,28 @@ def _teste():
                   "EFFECTIVE_COUPON_AMOUNT": [-1.0, -1.0]}).to_excel(tmp, index=False)
     assert abs(soma_ab(tmp) - 122.0) < 0.001, "COUPON_AMOUNT bruto entrou na soma, ou EFFECTIVE_COUPON_AMOUNT nao entrou"
     os.remove(tmp)
+
+    # Credenciais: env var tem prioridade; sem env, cai no cofre (keyring)
+    import types
+    senha_no_cofre = {"usuario": "fulano", "senha": "123"}
+    fake_keyring = types.SimpleNamespace(
+        get_password=lambda servico, chave: senha_no_cofre.get(chave) if servico == "MARKETPLACE_KONCILI" else None
+    )
+    sys.modules["keyring"] = fake_keyring
+    env_antigo = {k: os.environ.pop(k, None) for k in ("KONCILI_USUARIO", "KONCILI_SENHA")}
+    try:
+        assert ler_credenciais() == ("fulano", "123"), "nao caiu no cofre quando faltou variavel de ambiente"
+        os.environ["KONCILI_USUARIO"] = "var-ambiente"
+        os.environ["KONCILI_SENHA"] = "senha-ambiente"
+        assert ler_credenciais() == ("var-ambiente", "senha-ambiente"), "variavel de ambiente devia ter prioridade sobre o cofre"
+    finally:
+        del sys.modules["keyring"]
+        for k, v in env_antigo.items():
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
+
     print("koncili.py: ok")
 
 

@@ -4,6 +4,33 @@ Automatiza o ciclo diário de conciliação financeira do Mercado: baixar o AB n
 
 Antes era feito com macros, planilhas e Power Query manuais (`AB_MERCADO_TOTVS.xlsm`, `CONTROLE_V2.xlsx`, conferência pedido a pedido no ML).
 
+## Leia primeiro (guia para quem não mexe com código)
+
+Este projeto automatiza, todo dia, a conferência das vendas do Mercado Livre contra o que entra no TOTVS (sistema da empresa) e contra o banco. Antes isso era feito na mão, em planilha; agora um conjunto de programas faz sozinho — você só roda cada etapa, na ordem certa, e confere o resultado.
+
+Em português simples, o dia funciona assim:
+
+1. **Busca** os dados de venda do dia no Koncili (site que recebe os repasses do Mercado Livre).
+2. **Monta** um arquivo "Para Processar" pra lançar no TOTVS.
+3. **Empilha** (guarda numa planilha histórica, pra consulta e auditoria) o que já foi lançado.
+4. **Concilia** esse lançamento contra o extrato bancário e mostra um painel (dashboard) com o que fechou certinho e o que precisa ser conferido na mão.
+
+Cada pasta cuida de uma dessas etapas e tem o seu próprio `README.md`, com passo a passo de como rodar — abra o da pasta que você vai usar.
+
+| Ordem | Pasta | O que faz | Guia |
+|---|---|---|---|
+| 1 | `KONCILI` | Busca a venda do dia no Koncili | `KONCILI/README.md` |
+| 2 | `PARA_PROCESSAR` | Monta o arquivo pra lançar no TOTVS | `PARA_PROCESSAR/README.md` |
+| 3 | `EMPILHAR` | Guarda o lançamento na planilha histórica | `EMPILHAR/README.md` |
+| 4 | `CONCILIACAO` | Confere contra o banco e mostra o painel | `CONCILIACAO/README.md` |
+| — | `COMUM` | Peça compartilhada pelas 4 etapas acima, e o cofre de senhas | `COMUM/README.md` |
+| — | `Screaper Mercado` | Ferramenta auxiliar de busca de pedido no ML/MP e no SRI | `Screaper Mercado/README.md` |
+| — | `DOCS` | Anotações de decisões técnicas do projeto | `DOCS/README.md` |
+
+**Primeira vez usando?** Antes de rodar qualquer coisa, configure o cofre de senhas (guarda seu usuário/senha do Koncili e do SRI de forma segura, sem precisar digitar toda vez) — passo a passo em `COMUM/README.md`.
+
+O restante deste arquivo (a partir daqui) é a documentação técnica, para quem for mexer no código.
+
 ## Fluxo do dia
 
 ```
