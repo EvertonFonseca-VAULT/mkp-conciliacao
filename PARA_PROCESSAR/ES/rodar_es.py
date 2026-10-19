@@ -71,7 +71,12 @@ def rodar(caminho_ab, caminho_pti, frete=True, ajustar_cupom=False):
     if len(pendentes):
         resolvidos = resolver_pendentes_via_sri(pendentes)
         cruzado.loc[resolvidos.index, "totvs_encontrado"] = resolvidos["totvs_encontrado"]
-        cruzado.loc[resolvidos.index, "verificar"] = False
+        # resolvidos["verificar"] (nao False fixo): sem o scraper SRI disponivel,
+        # resolver_pendentes_via_sri devolve o pendente sem resolver (verificar
+        # continua True) -- fixo em False perderia a rede de seguranca da fila
+        # VERIFICAR pra quem roda sem o SRI. Achado real, colega sem Screaper
+        # Mercado, CENTER 09.10.2026.
+        cruzado.loc[resolvidos.index, "verificar"] = resolvidos["verificar"]
 
     para_processar = gerar_para_processar(cruzado)
     if caminho_pti is None:

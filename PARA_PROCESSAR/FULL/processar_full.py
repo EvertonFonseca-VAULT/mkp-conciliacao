@@ -108,11 +108,14 @@ def cruzar_totvs(df, totvs, coluna_chave=COLUNA_CHAVE_TOTVS):
     return df
 
 
-# %USERPROFILE%, nao caminho fixo com usuario -- pra rodar na maquina de
-# qualquer colega que tenha a pasta "Screaper Mercado" clonada no mesmo
-# lugar (Desktop\Projetos) na PROPRIA conta Windows. Pedido do Everton,
-# 18/09/2026 (compartilhar o processo de processar com o time).
-CAMINHO_SCRAPER_SRI = os.path.join(os.path.expanduser("~"), "Desktop", "Projetos", "Screaper Mercado")
+# 2 candidatos, nessa ordem: (1) "Screaper Mercado" do lado da propria pasta
+# compartilhada (RODAR CANAL/Screaper Mercado no X:, ou MARKETPLACE/Screaper
+# Mercado aqui no repo) -- funciona pra qualquer colega sem precisar de
+# convencao de pasta pessoal; (2) %USERPROFILE%\Desktop\Projetos\Screaper
+# Mercado, a pasta pessoal do Everton (pedido dele, 18/09/2026). Sem os 2,
+# resolver_pendentes_via_sri pula o fallback (ver try/except abaixo).
+CAMINHO_SCRAPER_SRI = os.path.join(os.path.dirname(__file__), "..", "..", "Screaper Mercado")
+CAMINHO_SCRAPER_SRI_PESSOAL = os.path.join(os.path.expanduser("~"), "Desktop", "Projetos", "Screaper Mercado")
 
 
 def resolver_pendentes_via_sri(pendentes):
@@ -122,11 +125,23 @@ def resolver_pendentes_via_sri(pendentes):
     cada pedido só precisa ser pesquisado uma vez. Reaproveita o scraper
     já existente em `Screaper Mercado/Pagina.py` (login + busca por
     pedmkp): achou no SRI -> usa SHIPPING_ID; não achou -> EXTERNAL_REFERENCE
-    (mesma regra manual documentada no passo a passo)."""
+    (mesma regra manual documentada no passo a passo).
+
+    Colega sem a pasta "Screaper Mercado" clonada (ver CAMINHO_SCRAPER_SRI):
+    sem esse fallback, `pendentes` simplesmente fica em VERIFICAR -- antes
+    disso derrubava o processo inteiro com ModuleNotFoundError pra qualquer
+    canal/dia que tivesse 1 pedido sem match automático no TOTVS (achado
+    real: colega sem o scraper, CENTER 09.10.2026)."""
     import sys
-    if CAMINHO_SCRAPER_SRI not in sys.path:
-        sys.path.insert(0, CAMINHO_SCRAPER_SRI)
-    from Pagina import login, buscar_e_validar, ler_credenciais
+    for caminho in (CAMINHO_SCRAPER_SRI, CAMINHO_SCRAPER_SRI_PESSOAL):
+        if caminho not in sys.path:
+            sys.path.insert(0, caminho)
+    try:
+        from Pagina import login, buscar_e_validar, ler_credenciais
+    except ImportError:
+        print(f"  [SRI] 'Screaper Mercado' nao encontrado (procurei em {CAMINHO_SCRAPER_SRI} "
+              f"e {CAMINHO_SCRAPER_SRI_PESSOAL}) -- pulando fallback, {len(pendentes)} pedido(s) ficam em VERIFICAR.")
+        return pendentes.copy()
     import requests
 
     unicos = pendentes[["EXTERNAL_REFERENCE", "SHIPPING_ID"]].drop_duplicates()
