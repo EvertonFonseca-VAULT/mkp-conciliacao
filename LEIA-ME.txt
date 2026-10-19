@@ -1,0 +1,137 @@
+MARKETPLACE -- projeto MKP inteiro (Koncili + Para Processar + Empilhar + Conciliacao)
+
+(Esta pasta se chamava "RODAR CANAL" antes -- renomeada pra MARKETPLACE, o
+mesmo nome do codigo-fonte no GitHub, pra nao confundir qual copia e qual.)
+
+Esta pasta e uma copia completa do codigo do projeto (sem dados reais --
+nenhum .xlsx/.xls/.db vem junto, so o codigo). Este LEIA-ME cobre as 2
+primeiras frentes (Koncili + Para Processar), que sao as que rodam todo
+dia; as outras (EMPILHAR, CONCILIACAO) tem passo a passo proprio no
+README.md de cada pasta (EMPILHAR\README.md, CONCILIACAO\README.md).
+
+O QUE TEM AQUI
+  LEIA-ME.txt            -- este arquivo (instalacao + uso do dia a dia)
+  guia_koncili.html       -- guia visual Koncili -> Para Processar (abrir no navegador)
+  criar_pastas.bat       -- cria as pastas locais que faltam (rodar 1x)
+  rodar_testes.bat       -- autoteste offline de cada modulo (rodar depois de instalar)
+  requirements.txt       -- libs Python necessarias
+  README.md, CONTEXT.md  -- documentacao tecnica completa do projeto (todas as frentes)
+  KONCILI\               -- baixa o AB no Koncili e confere com o calendario (README.md proprio)
+  COMUM\                 -- calendario_alvo.py (usado por todas as frentes) + cofre_senhas.py,
+                            pra guardar usuario/senha no Gerenciador de Credenciais do Windows
+                            em vez de digitar toda vez (ver README.md da pasta)
+  PARA_PROCESSAR\        -- rodar_canal.py (comando principal) + ES\, FULL\, MOVEIS\, WEB\ (README.md proprio)
+  Screaper Mercado\      -- Pagina.py: fallback do SRI, pra pedido que o TOTVS nao achou sozinho
+                            (opcional -- sem credencial, o rodar_canal.py funciona normal, so
+                            deixa esses pedidos em VERIFICAR pra conferencia manual)
+  EMPILHAR\, CONCILIACAO\ -- frentes seguintes (empilhado e conciliacao c/ o RB) -- passo a
+                            passo no README.md de cada uma
+
+O PROCESSO (2 ETAPAS, NESSA ORDEM)
+  1) KONCILI: baixa o AB do dia (export do components.koncili.com) e confere
+     se o valor bate: AB == RESULTADO do Koncili == VALOR_EB do calendario.
+  2) PARA PROCESSAR (rodar_canal.py): cruza esse AB com o TOTVS/SRI e gera o
+     arquivo que entra no processo automatico do TOTVS.
+
+  Depois disso vem a conciliacao com o extrato bancario (RB) -- isso e outra
+  frente, nao esta aqui.
+
+1) INSTALAR
+   - Python 3 instalado na maquina.
+   - Abrir cmd/PowerShell nesta pasta (RODAR CANAL) e rodar:
+       python -m pip install -r requirements.txt
+       python -m playwright install chromium
+     (o chromium so e usado pelo KONCILI, pra logar e baixar o AB)
+     Usar sempre "python -m ..." (nao so "pip"/"playwright" soltos) -- evita
+     o erro "comando nao reconhecido" quando o Scripts\ do Python nao esta
+     no PATH. Se "pip show playwright" nao mostrar nada depois do 1o
+     comando, a instalacao falhou e precisa rodar de novo antes do 2o.
+
+2) PASTAS/ACESSOS QUE PRECISAM EXISTIR
+   - Rodar criar_pastas.bat uma vez (cria as pastas locais em C:).
+   - Unidade X: mapeada (pedir caminho/acesso ao Everton ou TI) -- sem ela
+     da erro de rede tanto no KONCILI (salvar o AB) quanto no rodar_canal.py
+     (ler o AB).
+   - C:\KIT CONCILIACAO MKP\TOTVS_2022.xlsx -- pedir esse arquivo ao Everton
+     (export do TOTVS que o cruzamento usa). Sem ele, rodar_canal.py quebra
+     na hora de cruzar.
+   - C:\TEMP\PTI <CANAL>.csv (ou "PTI FULL*.csv" no caso do FULL) -- o PTI
+     do dia, colocar antes de rodar o Para Processar de cada canal (ELETRO
+     nao usa PTI).
+
+3) CREDENCIAIS DO KONCILI (e do SRI, se for usar o fallback)
+   Jeito recomendado -- guardar UMA VEZ no cofre de senhas do Windows, sem
+   precisar digitar de novo a cada sessao:
+       COMUM\cofre_senhas.bat   (duplo clique, segue o assistente na tela)
+   Ver COMUM\README.md pro passo a passo completo.
+
+   Alternativa -- variavel de ambiente, so vale na janela aberta (fecha o
+   PowerShell, esquece a senha):
+       $env:KONCILI_USUARIO="seu_email"
+       $env:KONCILI_SENHA="sua_senha"
+       $env:SRI_USUARIO="..."      (opcional, so pro fallback do SRI)
+       $env:SRI_SENHA="..."
+   Nunca colocar usuario/senha no codigo, nem num arquivo de texto.
+
+4) TESTAR A INSTALACAO (sem mexer em nada real -- nao toca X:/C:\RODAR TOTVS,
+   nao precisa login no Koncili)
+       rodar_testes.bat
+   ou um de cada vez:
+       python KONCILI\koncili.py --teste
+       python KONCILI\koncili_shopee.py --teste
+       python PARA_PROCESSAR\rodar_canal.py --teste
+       python PARA_PROCESSAR\ES\rodar_es.py --teste
+       python PARA_PROCESSAR\FULL\escolher_full.py --self-test
+       python PARA_PROCESSAR\ES\escolher_es.py --self-test
+       python EMPILHAR\empilhar_canais.py --teste
+       python CONCILIACAO\dashboard.py
+       python COMUM\cofre_senhas.py --teste
+   Todos imprimem "<arquivo>: ok". Se algum falhar, o problema e a
+   instalacao (venv errado, lib faltando etc.) -- ainda sem tocar em dado
+   real.
+
+5) USO DO DIA A DIA
+
+   Passo 1 -- KONCILI (baixa o AB e confere o valor):
+       cd KONCILI
+       python koncili.py <CANAL> DD.MM.AAAA                   (so confere, AB fica num arquivo temporario)
+       python koncili.py <CANAL> DD.MM.AAAA --salvar           (confere E grava o AB no X:, se ainda nao existir)
+       python koncili.py <CANAL> DATA_INICIO DATA_FIM --intervalo --salvar   (varios dias de uma vez)
+
+     Canais: ES, ELETRO, MOVEIS, PRIME, FULL, CENTER, WEB, COLETAS_CO05
+
+     Ler a linha impressa: "AB ... | Koncili OK/DIFERE | calendario OK/DIFERE".
+     So seguir pro passo 2 quando os 2 derem OK.
+
+   Passo 2 -- PARA PROCESSAR (cruza com o TOTVS/SRI e gera o arquivo pro TOTVS):
+       cd ..\PARA_PROCESSAR        (se estiver dentro de KONCILI; da raiz da pasta, so "cd PARA_PROCESSAR")
+       python rodar_canal.py <CANAL|TODOS> DD.MM.AAAA [DD.MM.AAAA ...] [--saida PASTA] [--forcar] [--ab CAMINHO_DO_AB]
+
+     Canais: FULL, ES, MOVEIS, ELETRO, CENTER, CO05, PRIME, WEB, ou TODOS
+
+     Exemplos:
+       python rodar_canal.py FULL 22.09.2026
+       python rodar_canal.py FULL 11.09.2026 18.09.2026        (varios dias, listar um a um, nao e intervalo)
+       python rodar_canal.py TODOS 22.09.2026
+       python rodar_canal.py ES 11.09.2026 --saida C:\temp      (grava em outra pasta, pra teste)
+       python rodar_canal.py ELETRO 11.09.2026 --forcar         (sobrescreve se ja existir)
+       python rodar_canal.py WEB 22.09.2026 --ab "X:\caminho\MERCADO WEB_teste 22.09.2026.xlsx"  (roda com um AB de teste, sem tocar no AB real)
+
+     Sem o drive X: mapeado, sem o TOTVS_2022.xlsx ou sem o PTI do dia em
+     C:\TEMP, da erro ("FileNotFoundError") -- no modo TODOS, so pula o
+     canal que faltou e segue com os outros.
+
+CUIDADOS
+  - VPN caida derruba o acesso ao X: (trava o passo 1 inteiro).
+  - KONCILI_USUARIO/SENHA nunca vai no codigo -- so variavel de ambiente.
+  - Se o KONCILI disser DIFERE contra o calendario, conferir se o proprio
+    calendario nao esta errado antes de achar que o processo falhou (ja
+    aconteceu, ex. MOVEIS 04/09) -- nesse caso o AB x Koncili (as 2 primeiras
+    colunas da linha impressa) continua sendo a fonte de verdade.
+  - Nao mover nem renomear as pastas COMUM\, KONCILI\, PARA_PROCESSAR\ (nem as
+    subpastas ES\, FULL\, MOVEIS\ dentro dela) -- o codigo importa de uma
+    pasta pra outra pelo nome exato.
+  - Arquivo final nao bateu com o que voce esperava (valor ou numero de
+    linhas muito diferente de um dia parecido): rodar o passo 1 (Koncili) de
+    novo pra esse dia e conferir "OK" antes de desconfiar do passo 2 -- nao
+    confiar so no H:M bater sozinho, conferir se o AB usado e o certo.

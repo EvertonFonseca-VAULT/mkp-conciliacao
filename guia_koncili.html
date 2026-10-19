@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koncili → Para Processar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --azul-continental:#102050; --azul-web:#0098f8; --ambar-acao:#e8890c;
+  --n0:#ffffff; --n1:#f6f8fb; --n2:#e6eaf0; --n3:#98a2b3; --n4:#5b6679; --n5:#1b2433;
+  --sucesso:#1f8a5b; --atencao:#f2b705; --erro:#c73e3a; --informacao:#2f6fde;
+  --chip-sucesso-bg:#e3f4eb; --chip-sucesso-fg:#14603f;
+  --chip-atencao-bg:#fff5d1; --chip-atencao-fg:#6b5200;
+  --chip-erro-bg:#fbe7e6; --chip-erro-fg:#9b2b27;
+  --chip-info-bg:#e4edfc; --chip-info-fg:#1a4594;
+  --bg:var(--n1); --surface:var(--n0); --surface2:var(--n1);
+  --ink:var(--n5); --ink2:var(--n4); --ink3:var(--n4);
+  --line:var(--n2); --line2:var(--n2);
+  --ok:var(--chip-sucesso-fg); --okbg:var(--chip-sucesso-bg);
+  --bad:var(--chip-erro-fg); --badbg:var(--chip-erro-bg);
+  --warn:var(--chip-atencao-fg); --warnbg:var(--chip-atencao-bg);
+  --accent:var(--azul-continental); --accentbg:var(--chip-info-bg);
+  --sans:"IBM Plex Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px;
+  --r-xs:6px; --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  --shadow:0 1px 2px rgba(16,32,80,.06), 0 1px 3px rgba(16,32,80,.08);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --azul-continental:#4d7fd6;
+    --n0:#141e35; --n1:#0d1424; --n2:#24314f; --n4:#98a2b3; --n5:#e6eaf0;
+    --sucesso:#4fc98d; --atencao:#e0aa53; --erro:#ff8078; --informacao:#84a7f7;
+    --chip-sucesso-bg:#122a20; --chip-sucesso-fg:#4fc98d;
+    --chip-atencao-bg:#2a2010; --chip-atencao-fg:#e0aa53;
+    --chip-erro-bg:#2c1614; --chip-erro-fg:#ff8078;
+    --chip-info-bg:#17203a; --chip-info-fg:#84a7f7;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px -10px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --azul-continental:#4d7fd6;
+  --n0:#141e35; --n1:#0d1424; --n2:#24314f; --n4:#98a2b3; --n5:#e6eaf0;
+  --sucesso:#4fc98d; --atencao:#e0aa53; --erro:#ff8078; --informacao:#84a7f7;
+  --chip-sucesso-bg:#122a20; --chip-sucesso-fg:#4fc98d;
+  --chip-atencao-bg:#2a2010; --chip-atencao-fg:#e0aa53;
+  --chip-erro-bg:#2c1614; --chip-erro-fg:#ff8078;
+  --chip-info-bg:#17203a; --chip-info-fg:#84a7f7;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 22px -10px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:auto}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font:400 14px/1.5 var(--sans);
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px));
+}
+.wrap{max-width:860px; margin:0 auto; padding:var(--s6) 0 64px}
+h1,h2,h3{font-family:var(--sans); margin:0; text-wrap:balance}
+code,.mono{font-family:var(--mono)}
+.tabular{font-variant-numeric:tabular-nums}
+
+.progresso-fixo{
+  position:sticky; top:0; z-index:20; background:var(--bg);
+  border-bottom:1px solid var(--line); padding:var(--s3) 0 var(--s2);
+}
+.progresso-linha{display:flex; align-items:center; gap:var(--s3); max-width:860px; margin:0 auto; padding:0 var(--s2)}
+.progresso-trilho{flex:1; height:8px; border-radius:var(--r-pill); background:var(--n2); overflow:hidden}
+.progresso-barra{height:100%; background:var(--ok); border-radius:var(--r-pill); transition:width .25s ease; width:0%}
+.progresso-texto{font:600 11.5px/1 var(--mono); color:var(--ink2); white-space:nowrap}
+
+.hero{padding:var(--s6) 0 var(--s4)}
+.eyebrow{font:500 10.5px/1 var(--sans); letter-spacing:.07em; text-transform:uppercase; color:var(--ink3)}
+.hero h1{font:600 28px/1.1 var(--sans); letter-spacing:-.015em; margin-top:var(--s2); color:var(--azul-continental)}
+.hero p{color:var(--ink2); font-size:13.5px; max-width:60ch; margin-top:var(--s2)}
+.hero-chips{display:flex; gap:var(--s2); flex-wrap:wrap; margin-top:var(--s4)}
+
+.chip{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:var(--r-pill); font:600 11.5px/1.4 var(--sans)}
+.chip-ok{background:var(--okbg); color:var(--ok)}
+.chip-warn{background:var(--warnbg); color:var(--warn)}
+.chip-info{background:var(--accentbg); color:var(--accent)}
+.chip-bad{background:var(--badbg); color:var(--bad)}
+.dot{width:7px; height:7px; border-radius:50%; background:currentColor; flex:none}
+
+.abas{display:flex; gap:4px; overflow-x:auto; padding:var(--s4) 0 var(--s2); border-bottom:1px solid var(--line); scrollbar-width:thin}
+.aba{
+  flex:none; display:flex; align-items:center; gap:7px; padding:8px 12px; border:none; background:none;
+  font:600 12.5px/1 var(--sans); color:var(--ink2); cursor:pointer; border-radius:var(--r-sm) var(--r-sm) 0 0;
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+.aba:hover{color:var(--ink)}
+.aba[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent)}
+.aba .num{
+  width:18px; height:18px; border-radius:50%; background:var(--n2); color:var(--ink2);
+  font:600 9.5px/18px var(--mono); text-align:center; flex:none;
+}
+.aba[aria-selected="true"] .num{background:var(--accent); color:var(--surface)}
+
+section[data-painel]{padding-top:var(--s6)}
+section[data-painel][hidden]{display:none}
+
+.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow); padding:var(--s5); margin-bottom:var(--s4)}
+.card h2{font:600 16px/1.2 var(--sans); margin-bottom:var(--s2)}
+.card h3{font:600 13px/1.3 var(--sans); margin:var(--s4) 0 var(--s2); color:var(--ink)}
+.card p{color:var(--ink2); font-size:13px}
+.card ul, .card ol{margin:var(--s2) 0; padding-left:1.2em; color:var(--ink2); font-size:13px}
+.card li{margin-bottom:4px}
+.card li b, .card li strong{color:var(--ink)}
+
+figure{margin:0}
+figure svg{max-width:100%; height:auto; display:block; margin:0 auto}
+figcaption{font-size:12px; color:var(--ink3); text-align:center; margin-top:var(--s2)}
+
+.bloco-cmd{background:var(--surface2); border:1px solid var(--line2); border-radius:var(--r-md); margin:var(--s3) 0; overflow:hidden}
+.bloco-cmd-head{display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line2)}
+.bloco-cmd-rotulo{font:500 10.5px/1 var(--sans); letter-spacing:.07em; text-transform:uppercase; color:var(--ink3)}
+.btn-copiar{
+  border:1px solid var(--line); background:var(--surface); color:var(--ink2); border-radius:var(--r-xs);
+  font:500 11px/1 var(--sans); padding:5px 9px; cursor:pointer;
+}
+.btn-copiar:hover{color:var(--accent); border-color:var(--accent)}
+.btn-copiar.copiado{color:var(--ok); border-color:var(--ok)}
+.bloco-cmd pre{margin:0; padding:10px 12px; overflow-x:auto}
+.bloco-cmd code{font:12.5px/1.6 var(--mono); color:var(--ink); white-space:pre}
+
+.item-check{display:flex; gap:var(--s3); align-items:flex-start; padding:var(--s3) 0; border-bottom:1px solid var(--line2)}
+.item-check:last-child{border-bottom:none}
+.item-check input{width:18px; height:18px; margin-top:1px; accent-color:var(--ok); flex:none; cursor:pointer}
+.item-check label{font-size:13px; color:var(--ink); cursor:pointer}
+.item-check .sub{display:block; font-size:12px; color:var(--ink3); margin-top:2px}
+
+.cofre{background:var(--accentbg); border:1px solid var(--line); border-radius:var(--r-lg); padding:var(--s5); display:flex; gap:var(--s4)}
+.cofre svg{flex:none; width:40px; height:40px; color:var(--accent)}
+.cofre h2{color:var(--accent)}
+.var-env{display:flex; align-items:center; gap:8px; font:600 12.5px/1 var(--mono); color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-xs); padding:6px 10px; margin:8px 0; width:fit-content}
+.var-env .tag{font:600 9.5px/1 var(--sans); background:var(--n2); color:var(--ink2); padding:2px 6px; border-radius:4px}
+
+.passo{display:flex; gap:var(--s3); align-items:flex-start; margin-bottom:var(--s4)}
+.passo-num{width:26px; height:26px; border-radius:50%; background:var(--accent); color:var(--surface); font:600 12px/26px var(--mono); text-align:center; flex:none}
+.passo-corpo{flex:1; min-width:0}
+.passo-corpo h3{margin:0 0 4px}
+
+table{width:100%; border-collapse:collapse; font-size:12.5px; margin-top:var(--s2)}
+th{background:var(--surface2); color:var(--ink3); text-transform:uppercase; font:600 10px/1 var(--sans); letter-spacing:.07em; text-align:left; padding:8px 10px; border-bottom:1px solid var(--line)}
+td{padding:7px 10px; border-bottom:1px solid var(--line2); color:var(--ink)}
+
+.aviso{display:flex; gap:10px; background:var(--warnbg); color:var(--warn); border-radius:var(--r-sm); padding:10px 12px; font-size:12.5px; margin-top:var(--s3)}
+.aviso svg{flex:none; width:18px; height:18px; margin-top:1px}
+
+footer{color:var(--ink3); font-size:11.5px; text-align:center; padding-top:var(--s6)}
+
+@media (max-width:560px){
+  .hero h1{font-size:22px}
+  .cofre{flex-direction:column}
+}
+</style>
+</head>
+<body>
+
+<div class="progresso-fixo">
+  <div class="progresso-linha">
+    <span class="progresso-texto tabular" id="progresso-label">0/8 feito</span>
+    <div class="progresso-trilho"><div class="progresso-barra" id="progresso-barra"></div></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Mercado · AB / Koncili / Para Processar</div>
+    <h1>Como rodar: Koncili → Para Processar</h1>
+    <p>Guia de entendimento e execução da frente que vem <b>antes</b> da conciliação com o extrato bancário: baixar o AB no Koncili, conferir se bate, e gerar o arquivo que entra no TOTVS. Código completo já está nesta mesma pasta (<code>RODAR CANAL</code>), com LEIA-ME.txt, <code>criar_pastas.bat</code> e <code>rodar_testes.bat</code>.</p>
+    <div class="hero-chips">
+      <span class="chip chip-info"><span class="dot"></span>2 etapas</span>
+      <span class="chip chip-ok"><span class="dot"></span>8 canais</span>
+      <span class="chip chip-warn"><span class="dot"></span>precisa de credencial</span>
+    </div>
+  </header>
+
+  <nav class="abas" role="tablist" aria-label="Seções do guia">
+    <button class="aba" role="tab" data-tab="visao" aria-selected="true"><span class="num">·</span>Visão geral</button>
+    <button class="aba" role="tab" data-tab="instalar"><span class="num">1</span>Instalar</button>
+    <button class="aba" role="tab" data-tab="pastas"><span class="num">2</span>Pastas e acessos</button>
+    <button class="aba" role="tab" data-tab="credenciais"><span class="num">3</span>Cofre de senha</button>
+    <button class="aba" role="tab" data-tab="testar"><span class="num">4</span>Testar</button>
+    <button class="aba" role="tab" data-tab="koncili"><span class="num">5</span>Rodar Koncili</button>
+    <button class="aba" role="tab" data-tab="processar"><span class="num">6</span>Para Processar</button>
+    <button class="aba" role="tab" data-tab="cuidados"><span class="num">7</span>Cuidados</button>
+  </nav>
+
+  <section data-painel="visao">
+    <div class="card">
+      <h2>O mecanismo, em 1 figura</h2>
+      <p>O Koncili é a fonte: ele já fechou o repasse do dia. O resto do processo só confere isso e traduz pro formato que o TOTVS entende.</p>
+      <figure>
+        <svg viewBox="0 0 950 290" role="img" aria-label="Fluxo: Koncili gera o AB, que é conferido contra o calendário, depois cruzado com TOTVS/SRI pelo Para Processar, e por fim importado no TOTVS.">
+          <defs>
+            <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+          <g font-family="IBM Plex Sans, sans-serif" fill="currentColor">
+            <rect x="20" y="150" width="180" height="70" rx="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="110" y="180" text-anchor="middle" font-size="13" font-weight="600">Koncili</text>
+            <text x="110" y="198" text-anchor="middle" font-size="10.5" opacity=".65">components.koncili.com</text>
+
+            <rect x="52" y="30" width="250" height="46" rx="8" fill="none" stroke="var(--ok)" stroke-width="1.5"/>
+            <text x="177" y="49" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--ok)">✓ BATE O VALOR</text>
+            <text x="177" y="64" text-anchor="middle" font-size="9.5" fill="var(--ok)" opacity=".85">AB = RESULTADO = calendário</text>
+            <line x1="177" y1="76" x2="177" y2="148" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+            <line x1="200" y1="185" x2="268" y2="185" stroke="currentColor" stroke-width="1.5" marker-end="url(#seta)"/>
+            <text x="234" y="176" text-anchor="middle" font-size="9.5" opacity=".7">baixa</text>
+
+            <rect x="270" y="150" width="170" height="70" rx="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="355" y="180" text-anchor="middle" font-size="13" font-weight="600">AB</text>
+            <text x="355" y="198" text-anchor="middle" font-size="10.5" opacity=".65">planilha em X:</text>
+
+            <line x1="440" y1="185" x2="508" y2="185" stroke="currentColor" stroke-width="1.5" marker-end="url(#seta)"/>
+            <text x="474" y="176" text-anchor="middle" font-size="9.5" opacity=".7">cruza c/ TOTVS/SRI</text>
+
+            <rect x="510" y="150" width="200" height="70" rx="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="610" y="180" text-anchor="middle" font-size="13" font-weight="600">Para Processar</text>
+            <text x="610" y="198" text-anchor="middle" font-size="10.5" opacity=".65">C:\RODAR TOTVS</text>
+
+            <line x1="710" y1="185" x2="778" y2="185" stroke="currentColor" stroke-width="1.5" marker-end="url(#seta)"/>
+            <text x="744" y="176" text-anchor="middle" font-size="9.5" opacity=".7">importa</text>
+
+            <rect x="780" y="150" width="150" height="70" rx="10" fill="var(--accentbg)" stroke="var(--accent)" stroke-width="1.5"/>
+            <text x="855" y="180" text-anchor="middle" font-size="13" font-weight="600" fill="var(--accent)">TOTVS</text>
+            <text x="855" y="198" text-anchor="middle" font-size="10.5" fill="var(--accent)" opacity=".8">processo automático</text>
+
+            <line x1="855" y1="222" x2="855" y2="250" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,3"/>
+            <text x="855" y="266" text-anchor="middle" font-size="9.5" opacity=".6">(depois vem a conciliação c/ o banco — outra frente)</text>
+          </g>
+        </svg>
+        <figcaption>Passo 5 baixa e confere; passo 6 cruza e gera o arquivo que o TOTVS importa.</figcaption>
+      </figure>
+    </div>
+
+    <div class="card">
+      <h2>Checklist de preparo</h2>
+      <p>Marque conforme for resolvendo — a barra no topo acompanha.</p>
+      <div class="item-check">
+        <input type="checkbox" id="c-python">
+        <label for="c-python">Python 3 instalado<span class="sub">qualquer 3.x recente</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-libs">
+        <label for="c-libs">Bibliotecas instaladas<span class="sub">pip install -r requirements.txt</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-playwright">
+        <label for="c-playwright">Chromium do Playwright instalado<span class="sub">playwright install chromium</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-pastas">
+        <label for="c-pastas">Pastas locais criadas<span class="sub">rodou criar_pastas.bat</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-drivex">
+        <label for="c-drivex">Unidade X: mapeada e acessível<span class="sub">pedir caminho/acesso ao Everton ou TI</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-totvsxlsx">
+        <label for="c-totvsxlsx">TOTVS_2022.xlsx na pasta<span class="sub">C:\KIT CONCILIACAO MKP\ — pedir ao Everton</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-credenciais">
+        <label for="c-credenciais">Credenciais do Koncili configuradas<span class="sub">KONCILI_USUARIO / KONCILI_SENHA — ver aba 3</span></label>
+      </div>
+      <div class="item-check">
+        <input type="checkbox" id="c-testes">
+        <label for="c-testes">rodar_testes.bat passou (tudo "ok")<span class="sub">confirma a instalação antes de usar dado real</span></label>
+      </div>
+    </div>
+  </section>
+
+  <section data-painel="instalar" hidden>
+    <div class="card">
+      <h2>1. Instalar</h2>
+      <p>Abrir PowerShell <b>dentro desta pasta</b> (RODAR CANAL) e rodar, nesta ordem:</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="python -m pip install -r requirements.txt">Copiar</button></div>
+        <pre><code>python -m pip install -r requirements.txt</code></pre>
+      </div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="python -m playwright install chromium">Copiar</button></div>
+        <pre><code>python -m playwright install chromium</code></pre>
+      </div>
+      <p>O chromium só é usado pelo <b>passo 5</b> (KONCILI), pra logar e baixar o AB. O Para Processar (passo 6) não usa navegador.</p>
+      <div class="aviso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.2a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0Z"/></svg>
+        <span>Sempre <code>python -m ...</code> (nunca <code>pip</code>/<code>playwright</code> soltos) — evita "comando não reconhecido" quando o Scripts\ do Python não está no PATH.</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-painel="pastas" hidden>
+    <div class="card">
+      <h2>2. Pastas e acessos</h2>
+      <p>Rodar uma vez, dando duplo clique:</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">nesta pasta</span><button class="btn-copiar" data-copy="criar_pastas.bat">Copiar</button></div>
+        <pre><code>criar_pastas.bat</code></pre>
+      </div>
+      <p>Isso cria as pastas locais em C:. Faltam 3 coisas que ninguém cria por script:</p>
+      <h3>Unidade X: mapeada</h3>
+      <p>É onde mora o AB (entrada) e o Para Processar precisa ler de lá. Pedir caminho/acesso ao Everton ou à TI.</p>
+      <h3>TOTVS_2022.xlsx</h3>
+      <p>Vai em <code>C:\KIT CONCILIACAO MKP\TOTVS_2022.xlsx</code>. É o export do TOTVS que o cruzamento usa pra achar cada pedido — sem ele, o passo 6 quebra na hora. Pedir ao Everton.</p>
+      <h3>PTI do dia</h3>
+      <p>CSV que vai em <code>C:\TEMP\</code>, um por canal (ELETRO não usa). Precisa colocar o do dia <b>antes</b> de rodar o Para Processar daquele canal:</p>
+      <table>
+        <tr><th>Canal</th><th>Arquivo esperado em C:\TEMP\</th></tr>
+        <tr><td>FULL</td><td class="mono">PTI FULL*.csv</td></tr>
+        <tr><td>ES</td><td class="mono">PTI ES.csv</td></tr>
+        <tr><td>MOVEIS</td><td class="mono">PTI MOVEIS.csv</td></tr>
+        <tr><td>ELETRO</td><td class="mono">(não usa)</td></tr>
+        <tr><td>CENTER</td><td class="mono">PTI CENTER.csv</td></tr>
+        <tr><td>CO05</td><td class="mono">PTI COLETAS 05.csv</td></tr>
+        <tr><td>PRIME</td><td class="mono">PTI_PRIME.csv</td></tr>
+        <tr><td>WEB</td><td class="mono">PTI WEB.csv</td></tr>
+      </table>
+      <div class="aviso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.2a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0Z"/></svg>
+        <span>Sem X: mapeado, sem o TOTVS_2022.xlsx ou sem o PTI do dia: dá erro (<code>FileNotFoundError</code>). No modo <code>TODOS</code>, só pula o canal que faltou e segue com os outros.</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-painel="credenciais" hidden>
+    <div class="cofre">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+      <div>
+        <h2>3. Cofre de senha — login do Koncili</h2>
+        <p>O login/senha do Koncili <b>nunca fica no código</b> — ele vem só de 2 variáveis de ambiente que o <code>koncili.py</code> lê na hora de rodar. Se faltar alguma, o script para sozinho e avisa qual.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Opção A — só pra esta sessão do PowerShell</h3>
+      <p>Mais simples, mas some se fechar o terminal (precisa rodar de novo na próxima vez).</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy='$env:KONCILI_USUARIO="seu_email@webcontinental.com.br"
+$env:KONCILI_SENHA="sua_senha"'>Copiar</button></div>
+        <pre><code>$env:KONCILI_USUARIO="seu_email@webcontinental.com.br"
+$env:KONCILI_SENHA="sua_senha"</code></pre>
+      </div>
+
+      <h3>Opção B — permanente (recomendado)</h3>
+      <p>Grava na sua conta do Windows. Rodar 1 vez; depois disso, <b>fechar e abrir o PowerShell de novo</b> pra valer.</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy='[Environment]::SetEnvironmentVariable("KONCILI_USUARIO","seu_email@webcontinental.com.br","User")
+[Environment]::SetEnvironmentVariable("KONCILI_SENHA","sua_senha","User")'>Copiar</button></div>
+        <pre><code>[Environment]::SetEnvironmentVariable("KONCILI_USUARIO","seu_email@webcontinental.com.br","User")
+[Environment]::SetEnvironmentVariable("KONCILI_SENHA","sua_senha","User")</code></pre>
+      </div>
+
+      <div class="var-env"><span class="tag">obrigatória</span> KONCILI_USUARIO</div>
+      <div class="var-env"><span class="tag">obrigatória</span> KONCILI_SENHA</div>
+
+      <h3>Opcional — só se for usar o fallback do SRI</h3>
+      <p>O Para Processar tem um 2º caminho pra achar um pedido que o TOTVS não encontrou: pesquisa direto no SRI. O código do scraper (pasta <code>Screaper Mercado</code>) já vem junto nesta pasta — só falta a credencial. Sem ela, o processo funciona normal — só fica sem esse fallback e deixa o pedido em VERIFICAR.</p>
+      <div class="var-env"><span class="tag">opcional</span> SRI_USUARIO</div>
+      <div class="var-env"><span class="tag">opcional</span> SRI_SENHA</div>
+
+      <div class="aviso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.2a1.6 1.6 0 0 0 1.4 2.4h16a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0Z"/></svg>
+        <span>Nunca cole usuário/senha dentro de um arquivo <code>.py</code>/<code>.bat</code> nem mande por chat/print. Qualquer um com acesso a essa pasta no X: veria.</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-painel="testar" hidden>
+    <div class="card">
+      <h2>4. Testar a instalação</h2>
+      <p>100% offline — não toca o X:, o C:\RODAR TOTVS nem faz login no Koncili. Só confirma que Python + bibliotecas estão certos, antes de rodar com dado real.</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">nesta pasta</span><button class="btn-copiar" data-copy="rodar_testes.bat">Copiar</button></div>
+        <pre><code>rodar_testes.bat</code></pre>
+      </div>
+      <p>Roda, em sequência: <code>koncili.py --teste</code>, <code>koncili_shopee.py --teste</code>, <code>rodar_canal.py --teste</code>, <code>ES\rodar_es.py --teste</code>, <code>FULL\escolher_full.py --self-test</code>, <code>ES\escolher_es.py --self-test</code>.</p>
+      <p>Cada um imprime <span class="chip chip-ok"><span class="dot"></span>arquivo: ok</span> no final. Se algum falhar, o problema é instalação (venv errado, lib faltando) — ainda sem risco de mexer em dado real.</p>
+    </div>
+  </section>
+
+  <section data-painel="koncili" hidden>
+    <div class="card">
+      <div class="passo"><span class="passo-num">5</span><div class="passo-corpo">
+        <h3>Baixar o AB e conferir o valor</h3>
+        <p>Entra na pasta KONCILI e roda com o canal + a data. <b>Isso não grava nada ainda</b> — só confere.</p>
+      </div></div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="cd KONCILI
+python koncili.py ES 22.09.2026">Copiar</button></div>
+        <pre><code>cd KONCILI
+python koncili.py ES 22.09.2026</code></pre>
+      </div>
+      <p>Quando bater, grave no X: com <code>--salvar</code> (não sobrescreve um AB que já exista):</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="python koncili.py ES 22.09.2026 --salvar">Copiar</button></div>
+        <pre><code>python koncili.py ES 22.09.2026 --salvar</code></pre>
+      </div>
+      <p>Vários dias de uma vez:</p>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="python koncili.py ES 11.09.2026 20.09.2026 --intervalo --salvar">Copiar</button></div>
+        <pre><code>python koncili.py ES 11.09.2026 20.09.2026 --intervalo --salvar</code></pre>
+      </div>
+
+      <h3>Canais</h3>
+      <table>
+        <tr><th>Canal</th><th>Nome exato pro comando</th></tr>
+        <tr><td>FULL</td><td class="mono">FULL</td></tr>
+        <tr><td>ES</td><td class="mono">ES</td></tr>
+        <tr><td>MOVEIS</td><td class="mono">MOVEIS</td></tr>
+        <tr><td>ELETRO</td><td class="mono">ELETRO</td></tr>
+        <tr><td>CENTER</td><td class="mono">CENTER</td></tr>
+        <tr><td>COLETAS CO05</td><td class="mono">COLETAS_CO05</td></tr>
+        <tr><td>PRIME</td><td class="mono">PRIME</td></tr>
+        <tr><td>WEB</td><td class="mono">WEB</td></tr>
+      </table>
+
+      <h3>Como ler a resposta</h3>
+      <p>O script imprime uma linha por dia, por exemplo:</p>
+      <div class="bloco-cmd"><pre><code>ES 22.09.2026: repasse 48213 | AB 48.211,07 | Koncili 48.211,07 OK | calendario 48.211,07 OK</code></pre></div>
+      <p><span class="chip chip-ok"><span class="dot"></span>OK</span> nos dois = pode seguir pro passo 6. <span class="chip chip-bad"><span class="dot"></span>DIFERE</span> = parar e investigar antes (ver aba Cuidados).</p>
+    </div>
+  </section>
+
+  <section data-painel="processar" hidden>
+    <div class="card">
+      <div class="passo"><span class="passo-num">6</span><div class="passo-corpo">
+        <h3>Gerar o Para Processar</h3>
+        <p>Cruza o AB com o TOTVS/SRI e grava o arquivo que o processo automático do TOTVS importa. Voltar pra raiz da pasta antes de rodar.</p>
+      </div></div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">PowerShell</span><button class="btn-copiar" data-copy="cd ..\PARA_PROCESSAR
+python rodar_canal.py ES 22.09.2026">Copiar</button></div>
+        <pre><code>cd ..\PARA_PROCESSAR
+python rodar_canal.py ES 22.09.2026</code></pre>
+      </div>
+
+      <h3>Outros usos</h3>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">todos os canais, 1 dia</span><button class="btn-copiar" data-copy="python rodar_canal.py TODOS 22.09.2026">Copiar</button></div>
+        <pre><code>python rodar_canal.py TODOS 22.09.2026</code></pre>
+      </div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">vários dias (listar 1 a 1, não é intervalo)</span><button class="btn-copiar" data-copy="python rodar_canal.py FULL 11.09.2026 18.09.2026">Copiar</button></div>
+        <pre><code>python rodar_canal.py FULL 11.09.2026 18.09.2026</code></pre>
+      </div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">sobrescrever um que já existe</span><button class="btn-copiar" data-copy="python rodar_canal.py ELETRO 11.09.2026 --forcar">Copiar</button></div>
+        <pre><code>python rodar_canal.py ELETRO 11.09.2026 --forcar</code></pre>
+      </div>
+      <div class="bloco-cmd">
+        <div class="bloco-cmd-head"><span class="bloco-cmd-rotulo">testar com um AB de mentira, sem tocar no real</span><button class="btn-copiar" data-copy='python rodar_canal.py WEB 22.09.2026 --ab "X:\caminho\MERCADO WEB_teste 22.09.2026.xlsx"'>Copiar</button></div>
+        <pre><code>python rodar_canal.py WEB 22.09.2026 --ab "X:\caminho\MERCADO WEB_teste 22.09.2026.xlsx"</code></pre>
+      </div>
+
+      <h3>O que o terminal mostra</h3>
+      <div class="bloco-cmd"><pre><code>ES 22.09.2026: 184 linhas | H:M 48.211,07 | Verificar 3 de 184 pedidos -> C:\RODAR TOTVS\...\PROCESSAR_MERCADO COLETAS ES 22.09.xlsx</code></pre></div>
+      <p>"H:M" tem que bater com o valor do passo 5. "Verificar" são pedidos que não acharam par automático no TOTVS/SRI — normal ter alguns, acompanhado à parte.</p>
+    </div>
+  </section>
+
+  <section data-painel="cuidados" hidden>
+    <div class="card">
+      <h2>7. Cuidados</h2>
+      <ul>
+        <li><b>VPN caída</b> derruba o acesso ao X: — trava o passo 5 inteiro (e o 6, que lê o AB de lá).</li>
+        <li><b>DIFERE contra o calendário</b> no passo 5: às vezes o calendário é que está errado (já aconteceu, ex. MOVEIS 04/09) — nesse caso o AB × Koncili (as 2 primeiras colunas da linha impressa) é que vale. Confirmar com o Everton antes de achar que o processo falhou.</li>
+        <li><b>Não mover nem renomear</b> as pastas <code>COMUM\</code>, <code>KONCILI\</code>, <code>PARA_PROCESSAR\</code> (nem <code>ES\</code>/<code>FULL\</code>/<code>MOVEIS\</code> dentro dela) — o código importa de uma pasta pra outra pelo nome exato.</li>
+        <li><b>Arquivo final estranho</b> (valor ou nº de linhas muito diferente do esperado): rodar o passo 5 (Koncili) de novo pra esse dia antes de desconfiar do passo 6 — não confiar só no H:M bater sozinho, conferir se o AB usado é o certo.</li>
+        <li><b>Credenciais</b> nunca em arquivo versionado nem em print/chat (ver aba 3).</li>
+        <li><code>FileNotFoundError</code> no passo 6 quase sempre é: X: não mapeado, TOTVS_2022.xlsx ausente, ou PTI do dia faltando em C:\TEMP\.</li>
+      </ul>
+      <p>Dúvida que não está aqui: <code>LEIA-ME.txt</code> nesta mesma pasta tem o passo a passo completo em texto, e o Everton é o dono do processo.</p>
+    </div>
+  </section>
+
+  <footer>RODAR CANAL — X:\109_GC_CTR_FINANCEIRO CONTAS A RECEBER\TEMP\CONCILIACAO\RODAR CANAL</footer>
+</div>
+
+<script>
+(function(){
+  var TABS = ["visao","instalar","pastas","credenciais","testar","koncili","processar","cuidados"];
+  var abas = document.querySelectorAll(".aba");
+  var paineis = {};
+  TABS.forEach(function(t){ paineis[t] = document.querySelector('section[data-painel="'+t+'"]'); });
+
+  function mostrarAba(nome){
+    TABS.forEach(function(t){ paineis[t].hidden = (t !== nome); });
+    abas.forEach(function(b){ b.setAttribute("aria-selected", b.dataset.tab === nome ? "true" : "false"); });
+    try { localStorage.setItem("koncili_guia_aba", nome); } catch(e){}
+  }
+
+  abas.forEach(function(b){ b.addEventListener("click", function(){ mostrarAba(b.dataset.tab); }); });
+
+  var inicial = "visao";
+  try { inicial = localStorage.getItem("koncili_guia_aba") || "visao"; } catch(e){}
+  if (TABS.indexOf(inicial) === -1) inicial = "visao";
+  mostrarAba(inicial);
+
+  var caixas = document.querySelectorAll(".item-check input[type=checkbox]");
+  var barra = document.getElementById("progresso-barra");
+  var label = document.getElementById("progresso-label");
+
+  function estadoSalvo(){
+    try { return JSON.parse(localStorage.getItem("koncili_guia_checklist") || "{}"); } catch(e){ return {}; }
+  }
+  function salvarEstado(obj){
+    try { localStorage.setItem("koncili_guia_checklist", JSON.stringify(obj)); } catch(e){}
+  }
+  function atualizarProgresso(){
+    var total = caixas.length, feitos = 0;
+    caixas.forEach(function(c){ if (c.checked) feitos++; });
+    barra.style.width = (total ? (feitos/total*100) : 0) + "%";
+    label.textContent = feitos + "/" + total + " feito" + (feitos === 1 ? "" : "s");
+  }
+
+  var salvo = estadoSalvo();
+  caixas.forEach(function(c){
+    if (salvo[c.id]) c.checked = true;
+    c.addEventListener("change", function(){
+      var s = estadoSalvo();
+      s[c.id] = c.checked;
+      salvarEstado(s);
+      atualizarProgresso();
+    });
+  });
+  atualizarProgresso();
+
+  function copiarTexto(texto){
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      return navigator.clipboard.writeText(texto);
+    }
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement("textarea");
+      ta.value = texto;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy") ? resolve() : reject();
+      } catch (e) {
+        reject(e);
+      }
+      document.body.removeChild(ta);
+    });
+  }
+
+  document.querySelectorAll(".btn-copiar").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var texto = btn.dataset.copy || (btn.closest(".bloco-cmd").querySelector("code").textContent);
+      copiarTexto(texto).then(function(){
+        var original = btn.textContent;
+        btn.textContent = "Copiado";
+        btn.classList.add("copiado");
+        setTimeout(function(){ btn.textContent = original; btn.classList.remove("copiado"); }, 1400);
+      }).catch(function(){
+        var r = document.createRange(); r.selectNodeContents(btn.closest(".bloco-cmd").querySelector("code"));
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
