@@ -220,7 +220,7 @@ Testes offline: `python KONCILI/koncili.py --teste`, `python PARA_PROCESSAR/roda
 
 **`CONCILIACAO/dashboard.py`** — HTML único e offline. `gerar_dashboard(resultado, fila_verificar, rebate_cmm, …)` preenche o template com placeholders `@@NOME@@`.
 - `_faixa_status`: mostra se o dia fecha com o calendário. Alvo e Calculado copiam só os dígitos (212.638,47 → `21263847`).
-- `_linhas_tabela`: colunas da fila VERIFICAR, na ordem `Aj. | RBX | RB | Dif. extrato | AB total | Pedido | Descrição | DIF | Frete | Comissão | BANCO | [Marcação] | Desc/Bônus | Repasse | Rebate`. O cabeçalho (`<thead>`) fica na mesma função e tem que seguir a mesma ordem.
+- `_linhas_tabela`: colunas da fila VERIFICAR, na ordem `Aj. | RBX | RB | Dif. extrato | Pedido | Descrição | DIF | Frete | Comissão | BANCO | [Marcação] | Desc/Bônus | Repasse | Rebate`. O cabeçalho (`<thead>`) fica na mesma função e tem que seguir a mesma ordem.
 - BANCO = RBX + DIF (sem RBX, só a DIF). Frete aparece em valor absoluto quando a DIF é positiva. Frete, Comissão e BANCO copiam ao clicar (`_valor_copia`: vírgula decimal, sem milhar, ex.: `586,94`).
 - Naturezas marcáveis, que geram linhas CMM e MOV na gaveta do rodapé: Frete 2209, Tarifa 2804 e Rebate 1107, todas na conta X103925, banco 237, agência 3708.
 - Scroll da fila VERIFICAR persiste em `localStorage` (22/09/2026): sobrevive ao reload automático do `visibilitychange`.

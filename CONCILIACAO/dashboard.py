@@ -383,12 +383,6 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
         banco = _banco(dif, v_rbx)
         dica_banco = f"BANCO = RBX + DIF\nRBX {_formatar_numero(v_rbx or 0)} + DIF {_formatar_numero(dif)}"
         cel_banco = f'<td class="num banco">{_valor_copia(banco, dica=dica_banco)}</td>'
-        # AB total (TOTAL_PED = REPASSE+COMISSAO+FRETE, ver cruzamento.py)
-        # -- do lado de RBX/RB/Diferenca extrato, pro Everton comparar
-        # direto o que o banco tem (RBX/RB) com o que o AB/ML diz que
-        # deveria ter, sem abrir outra planilha. Pedido do Everton,
-        # 18/09/2026.
-        cel_ab_total = f'<td class="num">{_valor_html(row.get("TOTAL_PED", 0))}</td>'
         # DESCRICAO (coluna E do AB, ver cruzamento.py) -- pro Everton ver
         # "mediation"/"refund"/etc na fila sem abrir o AB pra procurar o
         # pedido. Vazio quando o pedido nao tem nenhuma linha no AB do dia
@@ -410,7 +404,6 @@ def _linhas_tabela(fila_verificar, conferencia_rbx=None, historicos=None, valore
               {cel_rbx}
               {cel_rb}
               {cel_diferenca}
-              {cel_ab_total}
               <td class="ped"><button type="button" class="pedido" data-copiar="{pedido}" title="{pedido} — clique para copiar">{pedido}</button></td>
               {cel_descricao}
               <td class="num dif" title="{dica_dif}">{_valor_html(dif)}</td>
@@ -1372,7 +1365,7 @@ def gerar_dashboard(resultado, fila_verificar, rebate_cmm, *, canal, data, data_
       <div class="tabela-scroll">
         <table id="tabela-verificar">
           <thead><tr>
-            <th class="c-chk" title="Ajustado">Aj.</th><th>RBX</th><th>RB</th><th>Dif. extrato</th><th>AB total</th>
+            <th class="c-chk" title="Ajustado">Aj.</th><th>RBX</th><th>RB</th><th>Dif. extrato</th>
             <th class="esq">Pedido</th><th class="esq">Descrição</th><th>DIF</th><th>Frete</th>
             <th>Comissão</th><th title="RBX + DIF: valor a lançar no banco">Banco</th>{colunas_extra}<th>Desc/Bônus</th><th>Repasse</th><th>Rebate</th>
           </tr></thead>
@@ -1501,7 +1494,7 @@ if __name__ == "__main__":
         historicos={"frete": "MKP_ME_FULL_DESPESAS DE FRETE ENVIO",
                     "comissao": "MKP_ME_FULL_TARIFA DE COBRANÇA"},
     )
-    assert linhas_split.count("<td") == 14  # 13 de antes + BANCO
+    assert linhas_split.count("<td") == 13  # 12 de antes + BANCO
     assert ('data-motivo="DESPESAS DE FRETE ENVIO" data-natureza="2209" '
             'data-conta="X103925"') in linhas_split
     assert 'data-valor="-22,00"' in linhas_split
@@ -1691,7 +1684,7 @@ if __name__ == "__main__":
         assert "visibilitychange" in conteudo  # recarrega sozinho ao voltar pra aba
         assert "Acao sugerida" not in conteudo and 'class="acao"' not in conteudo  # coluna removida
         assert ">RBX<" in conteudo and ">RB<" in conteudo and "Dif. extrato" in conteudo
-        assert ">AB total<" in conteudo and _valor_html(1234.56) in conteudo
+        assert ">AB total<" not in conteudo  # coluna removida
         assert 'REBATE/c.xlsx">PROCESSAR_REBATE (1)</a>' in conteudo
         assert 'id="btn-atualizar" data-bat="../atualizar_full_0101.bat"' in conteudo
         # Rebate (formula) x RBX na faixa de status: bate (cmm 50.0 + cupom
@@ -1811,7 +1804,7 @@ if __name__ == "__main__":
         # pedido "3" nao tem ML_CUSTO_ENVIO -> custo_envio e None, sem split
         # (tarifa_cobranca fica None) -- continua com 1 checkbox so no Frete.
         linha3 = conteudo.split('<tr data-pedido="3"')[1].split("</tr>")[0]
-        assert linha3.count("<td") == 14  # 13 de antes + BANCO
+        assert linha3.count("<td") == 13  # 12 de antes + BANCO
         assert linha3.count('class="chk-natureza"') == 2  # so Frete + Rebate
         assert '<td class="desc">mediation, refund</td>' in linha3  # coluna Descricao (AB)
 
@@ -1982,7 +1975,7 @@ if __name__ == "__main__":
             # gerado certo pro FULL, igual ja confirmado pro Frete/Rebate.
             assert 'var PREFIXO_MOV = "MKP_ME_FULL";' in conteudo_extra
             linha3_extra = conteudo_extra.split('<tr data-pedido="3"')[1].split("</tr>")[0]
-            assert linha3_extra.count("<td") == 15  # 14 de sempre (com AB total e BANCO) + Marcacao
+            assert linha3_extra.count("<td") == 14  # 13 de sempre (sem AB total, com BANCO) + Marcacao
             assert 'sel-natureza-extra' in linha3_extra
             # JS: select entra na mesma lista que os checkboxes (mesmo
             # formato chk.dataset.*) e persiste em localStorage por pedido.
